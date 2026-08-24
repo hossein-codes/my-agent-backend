@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '
 import { ApiBearerAuth, ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { IsOptional, IsString } from 'class-validator';
 import { Request, Response } from 'express';
+import { AppConfigService } from '../../config/app-config.service';
 import { PaymentService } from './payment.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { CurrentUser, AuthenticatedUser, Public } from '../../common/decorators/auth.decorators';
@@ -28,6 +29,7 @@ export class PaymentsController {
   constructor(
     private readonly payments: PaymentService,
     private readonly prisma: PrismaService,
+    private readonly config: AppConfigService,
   ) {}
 
   @Get('callback')
@@ -40,7 +42,10 @@ export class PaymentsController {
     const ok = result.outcome === 'OK';
     const orderNumber = authority ? await this.orderNumberForAuthority(authority) : null;
     const base = ok ? 'payment-success' : 'payment-failed';
-    res.redirect(302, `/payment-result?status=${base}${orderNumber ? `&order=${orderNumber}` : ''}`);
+    // Absolute URL against the FRONTEND origin: a relative redirect would land
+    // on the API's own domain and the shopper would never see the result page.
+    const target = `${this.config.frontendBaseUrl}/payment-result?status=${base}${orderNumber ? `&order=${encodeURIComponent(orderNumber)}` : ''}`;
+    res.redirect(302, target);
   }
 
   @Post('webhook')
