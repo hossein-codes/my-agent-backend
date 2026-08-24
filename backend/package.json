@@ -25,11 +25,9 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "infra:setup": "bash scripts/devbox.sh setup",
+    "infra:setup:win": "powershell -ExecutionPolicy Bypass -File scripts/devbox.ps1",
     "db:migrate": "prisma migrate deploy",
     "seed": "prisma db seed"
-  },
-  "prisma": {
-    "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
