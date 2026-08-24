@@ -1,0 +1,47 @@
+# Local development infrastructure — PostgreSQL + Redis.
+#
+#   docker compose up -d
+#   npm run prisma:generate
+#   npm run prisma:migrate:dev
+#   npm run seed
+#   npm run start:dev
+#
+# These are DEV containers with throwaway credentials. Never reuse them in
+# staging or production (spec §34).
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fashion-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fashion
+      POSTGRES_PASSWORD: fashion
+      POSTGRES_DB: fashion_dev
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U fashion -d fashion_dev']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: fashion-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:

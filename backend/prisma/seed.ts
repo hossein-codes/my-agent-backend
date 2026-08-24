@@ -4,20 +4,12 @@
  * sizes, attributes), a category tree, brands, collections, tags, and one
  * demo product with variants — the exact shape from the Phase 1 directive.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { loadEnvFiles } from './env-loader';
 import { PrismaClient } from '@prisma/client';
 
-// Minimal env loader: seed can run via `prisma db seed` without shell exports.
+// Env loading lives in its own module so it can be unit-tested.
 // Precedence: existing env → .env.development → .env
-for (const file of ['.env.development', '.env']) {
-  if (process.env.DATABASE_URL) break;
-  if (existsSync(file)) {
-    for (const line of readFileSync(file, 'utf8').split('\n')) {
-      const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
-      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
-    }
-  }
-}
+loadEnvFiles(['.env.development', '.env'], 'DATABASE_URL');
 
 const prisma = new PrismaClient();
 
@@ -62,6 +54,11 @@ const PERMISSIONS: Record<string, string[]> = {
   'user.manage': ['SUPER_ADMIN'],
   'audit.read': ['SUPER_ADMIN'],
   'settings.manage': ['SUPER_ADMIN'],
+  // Demanded by AdminReviewsController (@Permissions('review.moderate')).
+  // Was missing, so the moderation queue returned 403 for everyone — even
+  // SUPER_ADMIN — because the guard checks permission slugs, not role names.
+  'review.moderate': ['SUPPORT', 'SUPER_ADMIN'],
+  'review.read': ['SUPPORT', 'PRODUCT_MANAGER', 'SUPER_ADMIN'],
 };
 
 const COLORS: Array<[name: string, displayName: string, slug: string, hex: string]> = [

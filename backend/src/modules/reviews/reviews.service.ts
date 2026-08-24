@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { AppConfigService } from '../../config/app-config.service';
-import { NotificationService } from '../notifications/notification.service';
 import { AuditService, AuditContext } from '../audit/audit.service';
 import { AppError } from '../../common/errors/app-error';
 import { FeaturesService } from '../system/features.service';
@@ -18,7 +17,6 @@ export class ReviewsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
-    private readonly notifications: NotificationService,
     private readonly audit: AuditService,
     private readonly features: FeaturesService,
   ) {}

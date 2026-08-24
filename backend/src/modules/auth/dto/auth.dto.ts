@@ -46,12 +46,3 @@ export class RecoveryConfirmDto {
   @Matches(/^\+989\d{9}$/)
   newPhone!: string;
 }
-
-export class DeviceKindDto {
-  @ApiProperty({ enum: ['WEB', 'ANDROID', 'IOS'] })
-  @IsIn(['WEB', 'ANDROID', 'IOS'])
-  deviceKind!: 'WEB' | 'ANDROID' | 'IOS';
-
-  @IsOptional() @IsString() @MaxLength(120)
-  deviceName?: string;
-}

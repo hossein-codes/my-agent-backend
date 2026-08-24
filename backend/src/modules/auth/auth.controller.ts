@@ -26,15 +26,16 @@ export class AuthController {
     private readonly appConfig: AppConfigService,
   ) {}
 
-  private setRefreshCookie(res: Response, token: string, req: Request): void {
-    const secure = (req as Request & { secure?: boolean }).secure ?? false;
-
+  private setRefreshCookie(res: Response, token: string, _req: Request): void {
     res.cookie(REFRESH_COOKIE, token, {
       httpOnly: true,
-      secure: this.appConfig.authCookieSecure, // L-4 FIX: honor AUTH_COOKIE_SECURE
+      // AUTH_COOKIE_SECURE=auto resolves to `true` in production.
+      secure: this.appConfig.authCookieSecure,
       sameSite: 'lax',
-      path: '/api/v1/auth',
-      maxAge: 30 * 86_400_000,
+      // Scoped to the auth prefix so the refresh token is never sent to
+      // ordinary API routes — a smaller blast radius if one is ever logged.
+      path: `/${this.appConfig.apiPrefix}/auth`,
+      maxAge: this.appConfig.refreshTokenTtlDays * 86_400_000,
     });
   }
 
@@ -122,22 +123,19 @@ export class AuthController {
 export class AdminSessionController {
   constructor(private readonly sessions: SessionService) {}
 
+  /**
+   * Revokes one of a user's sessions. Ownership is enforced in the query
+   * itself (`revokeSession(userId, …)` scopes by userId), so an admin can
+   * never revoke a session that does not belong to the path user.
+   */
   @Delete(':userId/sessions/:sessionId')
   @Permissions('user.manage')
-  async revoke(@Param('userId') userId: string, @Param('sessionId') sessionId: string) {
-    // L-7 FIX: verify the session actually belongs to the path user
-    const { PrismaService } = await import('../../shared/prisma/prisma.service');
-    return this.revokeForUser(userId, sessionId, PrismaService);
-  }
-
-  private async revokeForUser(userId: string, sessionId: string, _Prisma: unknown): Promise<{ revoked: boolean }> {
-
+  async revoke(@Param('userId') userId: string, @Param('sessionId') sessionId: string): Promise<{ revoked: boolean }> {
     const owned = await this.sessions.listSessions(userId);
     if (!owned.some((s) => s.id === sessionId)) {
-      const { AppError } = await import('../../common/errors/app-error');
       throw AppError.notFound();
     }
-    await this.sessions.revokeSession(undefined, sessionId);
+    await this.sessions.revokeSession(userId, sessionId);
     return { revoked: true };
   }
 }
