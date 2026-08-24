@@ -1,0 +1,1914 @@
+// ============================================================================
+// Prisma schema — DATABASE PHASE 1: IDENTITY + CATALOG
+// Fashion & Accessories e-commerce (single-vendor, Iran)
+//
+// Canonical per DATABASE MASTER CONTRACT v1.0 and the Phase 1 directive.
+// Phase boundary: NO inventory/cart/orders/payments/shipping/returns/refunds/
+// coupons/reviews/wishlist/notifications/reports models — they arrive in later
+// phases as ADDITIVE migrations referencing these entities.
+//
+// Conventions:
+//  * UUID primary keys (@db.Uuid); public identifiers separate (slug, sku).
+//  * ALL money: Integer Toman (Contract §4). Round-half-up math in code.
+//  * Soft delete (deletedAt) ONLY on User and Product (Contract §6).
+//  * Prisma normalizes DateTime to UTC (ADR-0004).
+//  * No raw auth secrets stored — opaque tokens are hashed (Contract §19).
+//  * Identity/National-ID data lives ONLY on IdentityVerificationRequest,
+//    encrypted at application layer, never in User/profile tables (§19, §24).
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS — stable, finite state sets only (Contract §8).
+// Sizes/colors/attributes/roles/permissions are DATA, never enums.
+// ============================================================================
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  DELETED // soft-deleted
+}
+
+enum OtpPurpose {
+  LOGIN
+  ACCOUNT_RECOVERY
+  EMAIL_VERIFY
+  PHONE_CHANGE
+}
+
+enum AccountRecoveryPurpose {
+  EMAIL_VERIFY
+  ACCOUNT_RECOVERY
+}
+
+enum IdentityVerificationStatus {
+  PENDING
+  IN_PROGRESS
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum ProductStatus {
+  DRAFT
+  SCHEDULED // publishedAt in the future
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum DiscountType {
+  PERCENT // discountValue = 1..100
+  FIXED // discountValue = Toman amount
+}
+
+// Sizes are DB entities; this enum only classifies the sizing SYSTEM,
+// which is a stable, finite concept (Phase 1 directive: alphabetical,
+// numerical, one-size/free-size).
+enum SizeType {
+  ALPHABETICAL // XS, S, M, L, XL, XXL …
+  NUMERICAL // 36, 38, 40 … (numericValue enables numeric sorting)
+  ONE_SIZE // "One Size" / "Free Size"
+}
+
+enum ColorStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProductMediaType {
+  IMAGE
+  VIDEO
+}
+
+enum MediaStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AttributeType {
+  TEXT // free text stored in rawValue
+  NUMBER // numeric string stored in rawValue
+  SELECT // one of AttributeValue rows
+}
+
+// ============================================================================
+// IDENTITY — Users, profiles, phones, emails, sessions, OTP log, recovery,
+// identity verification, RBAC (Phase 1 modules 1–12)
+// ============================================================================
+
+/// Core account record — deliberately thin. Login identifiers live in
+/// UserPhone/UserEmail; personal details in UserProfile; identity
+/// verification in IdentityVerificationRequest. No identity-sensitive data
+/// here, ever.
+model User {
+  id        String     @id @default(uuid()) @db.Uuid
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime? // soft delete — historical references must survive
+
+  profile                UserProfile?
+  phones                 UserPhone[]
+  emails                 UserEmail[]
+  sessions               AuthSession[]
+  otpLogs                OtpRequestLog[]
+  recoveryTokens         AccountRecoveryToken[]
+  identityVerifications  IdentityVerificationRequest[]
+  roles                  UserRole[]
+  inventoryReservations  InventoryReservation[]
+  couponUsages           CouponUsage[]
+  carts                  Cart[]
+  wishlist               Wishlist?
+  orders                 Order[]
+  returnRequests         ReturnRequest[]
+  mediaAssets            MediaAsset[]
+  reviews                Review[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+
+  @@index([status, createdAt])
+}
+
+model UserProfile {
+  userId    String   @id @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName String?
+  lastName  String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Phone-first authentication identifiers. One primary per user
+/// (partial unique index). E.164 format enforced by app validation.
+model UserPhone {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone      String    @unique // E.164: +989xxxxxxxxx — login lookup key
+  label      String?
+  isPrimary  Boolean   @default(false)
+  verifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model UserEmail {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email      String    @unique // lowercased — recovery + optional login aid
+  label      String?
+  isPrimary  Boolean   @default(false)
+  verifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+/// Rotating opaque refresh-token sessions (ADR-0002). Only the SHA-256 hash
+/// of the token is stored — never the raw secret (Contract §19).
+model AuthSession {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId      String    @db.Uuid // rotation family — reuse detection
+  refreshHash   String    @unique
+  deviceName    String?
+  deviceKind    String? // WEB | ANDROID | IOS | UNKNOWN
+  ip            String?
+  userAgent     String?
+  lastUsedAt    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String? // LOGOUT | ROTATED | REUSE_DETECTED | ADMIN | EXPIRED
+
+  @@index([userId, expiresAt])
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+/// Durable forensics for OTP issuance (the codes themselves live ONLY in
+/// Redis, hashed + TTL-limited — Contract §19). Append-only by convention;
+/// never contains the code.
+model OtpRequestLog {
+  id        String     @id @default(uuid()) @db.Uuid
+  userId    String?    @db.Uuid
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  phone     String // destination phone
+  purpose   OtpPurpose
+  ip        String?
+  userAgent String?
+  createdAt DateTime   @default(now())
+
+  @@index([phone, createdAt])
+  @@index([createdAt])
+  @@index([userId]) // post-audit M-4: per-user auth history
+}
+
+/// Single-use recovery/verification tokens (hashed). Delivered by email.
+model AccountRecoveryToken {
+  id        String                 @id @default(uuid()) @db.Uuid
+  userId    String                 @db.Uuid
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   AccountRecoveryPurpose
+  tokenHash String                 @unique // SHA-256 of the delivered secret
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime               @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Identity verification — separate from authentication (Contract §14),
+/// provider-independent (§13), optional in v1. National ID is stored ONLY
+/// here, encrypted (AES-256-GCM app layer); plaintext never stored, logged,
+/// or returned by normal queries.
+model IdentityVerificationRequest {
+  id                  String                     @id @default(uuid()) @db.Uuid
+  userId              String                     @db.Uuid
+  user                User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider            String // "mock" | future KYC providers — isolated (§13)
+  providerReference   String?
+  status              IdentityVerificationStatus @default(PENDING)
+  nationalIdEncrypted String? // AES-256-GCM ciphertext only
+  nationalIdHash      String? // HMAC-SHA256 duplicate check — no plaintext
+  result              Json? // sanitized provider response (justified §24)
+  failureReason       String?
+  requestedAt         DateTime                   @default(now())
+  verifiedAt          DateTime?
+  updatedAt           DateTime                   @updatedAt
+
+  @@index([userId, requestedAt])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// RBAC — extensible relational authorization (Contract §15)
+// ---------------------------------------------------------------------------
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique // CUSTOMER | PRODUCT_MANAGER | … | future
+  name        String
+  description String?
+  isSystem    Boolean  @default(true) // built-in roles are undeletable
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique // e.g. products.write, refunds.approve (namespace = scope §12)
+  category    String? // admin grouping: catalog | orders | payments | customers | reviews | reports | settings | identity
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String     @db.Uuid
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model UserRole {
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId      String   @db.Uuid
+  role        Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  grantedById String?  @db.Uuid
+  grantedAt   DateTime @default(now())
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+// ============================================================================
+// CATALOG — products, categories, brands, collections, tags, colors, sizes,
+// variants, media, attributes (Phase 1 modules 13–27)
+// ============================================================================
+
+/// Marketing/product groupings (New Arrivals, Summer Collection, …).
+model Collection {
+  id          String    @id @default(uuid()) @db.Uuid
+  slug        String    @unique
+  name        String
+  description String?   @db.Text
+  imageUrl    String?
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  startsAt    DateTime? // optional visibility window
+  endsAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products        ProductCollection[]
+  campaignTargets CampaignTarget[]
+  couponTargets   CouponTarget[]
+
+  @@index([isActive, sortOrder])
+}
+
+model ProductCollection {
+  productId    String     @db.Uuid
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  collectionId String     @db.Uuid
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([productId, collectionId])
+  @@index([collectionId])
+}
+
+/// Reusable product tags (new, sale, premium, …).
+model Tag {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products ProductTag[]
+}
+
+model ProductTag {
+  productId String   @db.Uuid
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tagId     String   @db.Uuid
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([productId, tagId])
+  @@index([tagId])
+}
+
+/// Brands — product manufacturer/label. NOT a seller/vendor (single-vendor
+/// store; vendor architecture explicitly out of scope for v1).
+model Brand {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  slug      String   @unique
+  logoUrl   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+}
+
+/// Hierarchical categories, unlimited depth via self-relation.
+/// `path` is the materialized slug path ("/clothing/men/t-shirts/") for
+/// cheap subtree queries. Self-parenting is blocked by CHECK; cycles are
+/// prevented by application-level path validation (documented).
+model Category {
+  id             String     @id @default(uuid()) @db.Uuid
+  parentId       String?    @db.Uuid
+  parent         Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children       Category[] @relation("CategoryTree")
+  name           String
+  slug           String     @unique
+  description    String?    @db.Text
+  path           String // materialized "/clothing/men/t-shirts/"
+  sortOrder      Int        @default(0)
+  isActive       Boolean    @default(true)
+  seoTitle       String?
+  seoDescription String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  products        ProductCategory[]
+  campaignTargets CampaignTarget[]
+  couponTargets   CouponTarget[]
+
+  @@index([parentId])
+  @@index([path])
+  @@index([isActive, sortOrder])
+}
+
+model ProductCategory {
+  productId  String   @db.Uuid
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  categoryId String   @db.Uuid
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([productId, categoryId])
+  @@index([categoryId])
+}
+
+/// Reusable colors across products (Phase 1 directive).
+model Color {
+  id          String      @id @default(uuid()) @db.Uuid
+  name        String      @unique // canonical internal name: "Black"
+  displayName String // shop-facing: "مشکی" or "Jet Black"
+  slug        String      @unique
+  hexCode     String // #000000
+  status      ColorStatus @default(ACTIVE)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  variants ProductVariant[]
+
+  @@index([status])
+}
+
+/// Size entities — alphabetical, numerical (sortable via numericValue) and
+/// one-size/free-size. Never hardcoded enums of labels (Phase 1 directive).
+model Size {
+  id           String   @id @default(uuid()) @db.Uuid
+  type         SizeType
+  label        String // "M", "38", "One Size"
+  numericValue Int? // set for NUMERICAL sizes → correct 36<38 sorting
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  variants ProductVariant[]
+
+  @@unique([type, label])
+  @@index([type, sortOrder])
+}
+
+/// Flexible fashion attributes (Material, Fit, Pattern, Season, Gender,
+/// Style …). Strongly structured fields (price, SKU, size, color, and later
+/// inventory) stay REAL columns — attributes never replace them.
+model Attribute {
+  id           String        @id @default(uuid()) @db.Uuid
+  slug         String        @unique // "material", "fit", …
+  name         String
+  type         AttributeType
+  isFilterable Boolean       @default(true) // surfaced in catalog facets
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  values            AttributeValue[]
+  productAttributes ProductAttribute[]
+  variantAttributes VariantAttribute[]
+}
+
+model AttributeValue {
+  id          String    @id @default(uuid()) @db.Uuid
+  attributeId String    @db.Uuid
+  attribute   Attribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  label       String // "Cotton", "Oversized"
+  slug        String // "cotton" — stable filter key
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  productAttributes ProductAttribute[]
+  variantAttributes VariantAttribute[]
+
+  @@unique([attributeId, slug])
+}
+
+/// Product is the general, not-necessarily-purchasable entity.
+/// basePrice/discount are catalog display pricing in integer Toman;
+/// checkout pricing engines arrive in later phases and will SNAPSHOT.
+model Product {
+  id             String        @id @default(uuid()) @db.Uuid
+  name           String
+  slug           String        @unique
+  description    String?       @db.Text
+  brandId        String?       @db.Uuid
+  brand          Brand?        @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  status         ProductStatus @default(DRAFT)
+  basePrice      Int // Toman — catalog DISPLAY default only (CHECK >= 0).
+  // AUTHORITATIVE pricing lives on VariantPrice (per variant, Phase 2).
+  // Product-level discounts were removed — discounts come from VariantPrice
+  // sale prices and Campaign rules (Phase 2 directive §6/§8).
+  publishedAt    DateTime? // scheduled publishing
+  unpublishAt    DateTime?
+  isFeatured     Boolean       @default(false)
+  seoTitle       String?
+  seoDescription String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime? // soft delete (archive)
+
+  categories      ProductCategory[]
+  collections     ProductCollection[]
+  tags            ProductTag[]
+  variants        ProductVariant[]
+  media           ProductMedia[]
+  attributes      ProductAttribute[]
+  wishlistItems   WishlistItem[]
+  campaignTargets CampaignTarget[]
+  couponTargets   CouponTarget[]
+  orderItems      OrderItem[]
+  reviews         Review[]
+
+  @@index([status, publishedAt])
+  @@index([brandId])
+  @@index([deletedAt])
+  @@index([isFeatured])
+}
+
+/// Product media references — ordering, type, alt text, status.
+/// Binary blobs are NEVER stored in PostgreSQL (Phase 1 directive);
+/// url points to object storage / CDN.
+model ProductMedia {
+  id           String           @id @default(uuid()) @db.Uuid
+  productId    String           @db.Uuid
+  product      Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  mediaAssetId String?          @db.Uuid // authoritative registry link (Phase 4 §16)
+  mediaAsset   MediaAsset?      @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  type         ProductMediaType
+  url          String // storage/CDN reference
+  alt          String?
+  sortOrder    Int              @default(0)
+  isPrimary    Boolean          @default(false)
+  status       MediaStatus      @default(ACTIVE)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([productId, sortOrder])
+  @@index([type])
+}
+
+/// ProductAttribute: product → attribute → (predefined value XOR raw text),
+/// enforced by CHECK exactly-one. One value per attribute per product.
+model ProductAttribute {
+  id               String          @id @default(uuid()) @db.Uuid
+  productId        String          @db.Uuid
+  product          Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attributeId      String          @db.Uuid
+  attribute        Attribute       @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  attributeValueId String?         @db.Uuid
+  attributeValue   AttributeValue? @relation(fields: [attributeValueId], references: [id], onDelete: Cascade)
+  rawValue         String?
+  createdAt        DateTime        @default(now())
+
+  @@unique([productId, attributeId])
+  @@index([attributeValueId])
+}
+
+/// THE purchasable entity: unique SKU + color/size option combination
+/// (Phase 1 "IMPORTANT PRODUCT RULE"). Inventory attaches here in Phase 2.
+model ProductVariant {
+  id          String   @id @default(uuid()) @db.Uuid
+  productId   String   @db.Uuid
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku         String   @unique // indexed unique — collision-free by constraint
+  barcode     String?
+  colorId     String?  @db.Uuid
+  color       Color?   @relation(fields: [colorId], references: [id], onDelete: Restrict)
+  sizeId      String?  @db.Uuid
+  size        Size?    @relation(fields: [sizeId], references: [id], onDelete: Restrict)
+  // Pricing override columns REMOVED in Phase 2: VariantPrice is the
+  // authoritative, historical price record per variant (backfilled).
+  weightGrams Int? // shipping metadata — used by later phases
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  attributes      VariantAttribute[]
+  inventory       Inventory?
+  prices          VariantPrice[]
+  movements       InventoryMovement[]
+  reservations    InventoryReservation[]
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+  exchangeTargets Exchange[]
+  // (productId, colorId, sizeId) uniqueness INCLUDING NULL options is added
+  // as a NULLS NOT DISTINCT partial unique index in the migration SQL.
+  wishlistItems   WishlistItem[]
+
+  @@index([productId, isActive])
+  @@index([colorId])
+  @@index([sizeId])
+}
+
+/// VariantAttribute: same pattern as ProductAttribute, per SKU.
+model VariantAttribute {
+  id               String          @id @default(uuid()) @db.Uuid
+  variantId        String          @db.Uuid
+  variant          ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  attributeId      String          @db.Uuid
+  attribute        Attribute       @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  attributeValueId String?         @db.Uuid
+  attributeValue   AttributeValue? @relation(fields: [attributeValueId], references: [id], onDelete: Cascade)
+  rawValue         String?
+  createdAt        DateTime        @default(now())
+
+  @@unique([variantId, attributeId])
+  @@index([attributeValueId])
+}
+
+// ============================================================================
+// DATABASE PHASE 2 — COMMERCE CORE
+// Inventory · Movements · Reservations · Pricing/Price History ·
+// Campaigns/Rules/Targets · Coupons/Targets/Usage · Cart · Wishlist
+// (Phase 2 directive; Contract §4 integer money, §10 inventory, §20 history)
+// ============================================================================
+
+enum InventoryMovementType {
+  RESTOCK // +onHand (warehouse intake)
+  SALE // reserved → sold (payment verified): -onHand -reserved +sold
+  RESERVATION // hold stock: +reserved
+  RESERVATION_RELEASE // release hold: -reserved (expiry/cancel)
+  RETURN // customer return back to stock: +onHand +returned
+  EXCHANGE // variant swap affecting stock (Phase 3 returns flow)
+  DAMAGE // write-off: -onHand +damaged
+  ADJUSTMENT // manual correction (audited): ±onHand
+  CANCELLATION // paid order cancelled, stock restored: +onHand
+}
+
+enum ReservationStatus {
+  ACTIVE
+  CONSUMED // payment verified — became a SALE
+  RELEASED // cancelled before payment
+  EXPIRED // payment window elapsed, stock returned
+}
+
+enum CartStatus {
+  ACTIVE
+  ABANDONED
+  CONVERTED // became an order (Phase 3)
+  EXPIRED
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum CouponStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// Shared targeting scope for campaign rules and coupons (Phase 2 §8/§11).
+enum CatalogTargetType {
+  PRODUCT
+  CATEGORY
+  COLLECTION
+}
+
+// ---------------------------------------------------------------------------
+// INVENTORY — variant-based level + immutable ledger (§1, §2, §5)
+// available = onHand - reserved (computed server-side, never stored).
+// ---------------------------------------------------------------------------
+
+model Inventory {
+  id                String         @id @default(uuid()) @db.Uuid
+  variantId         String         @unique @db.Uuid
+  variant           ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  onHand            Int            @default(0) // physical stock (incl. reserved)
+  reserved          Int            @default(0) // held by ACTIVE reservations
+  sold              Int            @default(0) // cumulative sold
+  returned          Int            @default(0) // cumulative returned
+  damaged           Int            @default(0) // cumulative written off
+  lowStockThreshold Int            @default(3)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  // SQL CHECKs: counters >= 0 AND reserved <= onHand (migration integrity.sql)
+  // NOTE: no reverse relation to InventoryMovement — the ledger links via
+  // variantId (1:1 with Inventory); a second FK duplicated the concept and
+  // its delete rule conflicted with the append-only trigger (Contract §2/§20).
+  // (plain variantId index removed post-audit L-1: unique variantId covers it)
+}
+
+/// Immutable inventory ledger (§2, §5). UPDATE/DELETE blocked by DB trigger.
+/// balanceAfter snapshots make the ledger self-verifying without relying on
+/// the mutable Inventory row.
+model InventoryMovement {
+  id            String                @id @default(uuid()) @db.Uuid
+  variantId     String                @db.Uuid
+  variant       ProductVariant        @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  type          InventoryMovementType
+  quantity      Int // signed onHand delta; CHECK (<> 0)
+  onHandAfter   Int // snapshot after applying this movement
+  reservedAfter Int // snapshot after applying this movement
+  actorId       String?               @db.Uuid // admin/system actor (Who?)
+  source        String                @default("SYSTEM") // ADMIN | SYSTEM | MIGRATION
+  reservationId String?               @db.Uuid // business operation ref
+  reservation   InventoryReservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  note          String? // Why?
+  createdAt     DateTime              @default(now())
+
+  @@index([variantId, createdAt])
+  @@index([reservationId])
+}
+
+/// Temporary stock holds for checkout (§3). Concurrency-safe: created only
+/// after a conditional UPDATE on Inventory (reserved+q ≤ onHand) inside one
+/// transaction — two shoppers cannot both take the final unit (§4, §17).
+model InventoryReservation {
+  id            String            @id @default(uuid()) @db.Uuid
+  variantId     String            @db.Uuid
+  variant       ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  userId        String?           @db.Uuid
+  user          User?             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  cartId        String?           @db.Uuid
+  cart          Cart?             @relation(fields: [cartId], references: [id], onDelete: SetNull)
+  orderId       String?           @db.Uuid // set when a checkout order owns this hold (§28)
+  order         Order?            @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  quantity      Int // CHECK (> 0)
+  status        ReservationStatus @default(ACTIVE)
+  expiresAt     DateTime // payment window — swept by expiry job
+  releasedAt    DateTime?
+  consumedAt    DateTime?
+  releaseReason String? // EXPIRED | CANCELLED | USER | ADMIN | SYSTEM
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  movements InventoryMovement[]
+  // one ACTIVE reservation per (cart, variant) — partial unique in SQL
+
+  @@index([variantId, status])
+  @@index([expiresAt])
+  @@index([userId, status])
+  @@index([orderId]) // post-audit M-4: payment-verify consumes by orderId
+}
+
+// ---------------------------------------------------------------------------
+// PRICING — authoritative per-variant prices WITH history (§6, §7)
+// The row with effectiveTo IS NULL is the current price; superseding writes
+// close the old row and insert a new one. Orders (Phase 3) snapshot values —
+// this table is history, never rewritten (§20).
+// ---------------------------------------------------------------------------
+
+model VariantPrice {
+  id             String         @id @default(uuid()) @db.Uuid
+  variantId      String         @db.Uuid
+  variant        ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  basePrice      Int // list price (comparison/original when salePrice set) — CHECK >= 0
+  salePrice      Int? // effective sale price — CHECK (0..basePrice)
+  effectiveFrom  DateTime       @default(now())
+  effectiveTo    DateTime? // NULL = current row; CHECK (> effectiveFrom)
+  source         String         @default("ADMIN") // ADMIN | CAMPAIGN | IMPORT | MIGRATION
+  campaignRuleId String?        @db.Uuid // sale price caused by this campaign rule
+  campaignRule   CampaignRule?  @relation(fields: [campaignRuleId], references: [id], onDelete: Restrict)
+  actorId        String?        @db.Uuid // who set it
+  note           String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  orderItems     OrderItem[]
+  // one CURRENT row per variant — partial unique (variantId) WHERE effectiveTo IS NULL
+
+  @@index([variantId, effectiveFrom])
+}
+
+// ---------------------------------------------------------------------------
+// CAMPAIGNS — flexible, relational, never hardcoded on Product (§8, §9)
+// ---------------------------------------------------------------------------
+
+model Campaign {
+  id          String         @id @default(uuid()) @db.Uuid
+  slug        String         @unique
+  name        String
+  description String?        @db.Text
+  status      CampaignStatus @default(DRAFT)
+  startsAt    DateTime
+  endsAt      DateTime? // NULL = open-ended
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  rules CampaignRule[]
+
+  @@index([status, startsAt])
+}
+
+/// One rule = one discount expression + optional conditions + optional
+/// targeting. Simple relational design now; extensible later (§9).
+model CampaignRule {
+  id                String       @id @default(uuid()) @db.Uuid
+  campaignId        String       @db.Uuid
+  campaign          Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  discountType      DiscountType // PERCENT | FIXED (reused Phase 1 enum)
+  percentOff        Int? // CHECK 1..100 when PERCENT (exactly-one via SQL)
+  amountOff         Int? // CHECK > 0 Toman when FIXED
+  maxDiscountAmount Int? // cap for PERCENT rules
+  minQuantity       Int? // condition: minimum quantity
+  minOrderAmount    Int? // condition: minimum order amount (Toman)
+  priority          Int          @default(0)
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  targets       CampaignTarget[]
+  variantPrices VariantPrice[]
+  orderItems    OrderItem[]
+
+  @@index([campaignId])
+}
+
+/// Rule targeting: product / category / collection via REAL FKs with an
+/// exactly-one CHECK (Contract §7/§24). No target rows ⇒ applies catalog-wide.
+model CampaignTarget {
+  id           String            @id @default(uuid()) @db.Uuid
+  ruleId       String            @db.Uuid
+  rule         CampaignRule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  targetType   CatalogTargetType
+  productId    String?           @db.Uuid
+  product      Product?          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  categoryId   String?           @db.Uuid
+  category     Category?         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  collectionId String?           @db.Uuid
+  collection   Collection?       @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+
+  @@unique([ruleId, productId])
+  @@unique([ruleId, categoryId])
+  @@unique([ruleId, collectionId])
+  // post-audit M-4: reverse applicability lookups (pricing engine)
+  @@index([productId])
+  @@index([categoryId])
+  @@index([collectionId])
+}
+
+// ---------------------------------------------------------------------------
+// COUPONS — percentage-based v1, deterministic integer math (§10, §11, §12)
+// ---------------------------------------------------------------------------
+
+model Coupon {
+  id                String       @id @default(uuid()) @db.Uuid
+  code              String       @unique // stored uppercase
+  status            CouponStatus @default(ACTIVE)
+  percentOff        Int // CHECK 1..100 — integer percent only
+  description       String?
+  minOrderAmount    Int          @default(0) // Toman — CHECK >= 0
+  maxDiscountAmount Int? // cap — CHECK >= 0
+  startsAt          DateTime
+  endsAt            DateTime?
+  usageLimitTotal   Int? // global limit — CHECK >= 1
+  usageLimitPerUser Int          @default(1) // CHECK >= 1
+  usageCount        Int          @default(0) // atomic consumption counter (§17)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  targets CouponTarget[]
+  usages  CouponUsage[]
+  orders  Order[]
+
+  @@index([status, startsAt])
+}
+
+/// Coupon targeting: empty ⇒ unrestricted coupon (§11).
+model CouponTarget {
+  id           String            @id @default(uuid()) @db.Uuid
+  couponId     String            @db.Uuid
+  coupon       Coupon            @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  targetType   CatalogTargetType
+  productId    String?           @db.Uuid
+  product      Product?          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  categoryId   String?           @db.Uuid
+  category     Category?         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  collectionId String?           @db.Uuid
+  collection   Collection?       @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+
+  @@unique([couponId, productId])
+  @@unique([couponId, categoryId])
+  @@unique([couponId, collectionId])
+  // post-audit M-4: reverse applicability lookups (cart pricing)
+  @@index([productId])
+  @@index([categoryId])
+  @@index([collectionId])
+}
+
+/// Immutable usage record (§12). discountAmount is the APPLIED discount
+/// snapshot — never recomputed from the coupon's current configuration.
+/// orderId awaits the Phase 3 Order table (FK added there; documented).
+model CouponUsage {
+  id             String   @id @default(uuid()) @db.Uuid
+  couponId       String   @db.Uuid
+  coupon         Coupon   @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  userId         String   @db.Uuid
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  orderId        String?  @db.Uuid // one coupon per order (nullable unique)
+  order          Order?   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  discountAmount Int // applied discount snapshot — CHECK >= 0
+  createdAt      DateTime @default(now())
+
+  @@unique([orderId])
+  @@index([couponId, userId])
+  @@index([userId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// CART — server-priced, never a financial source of truth (§13, §14, §15)
+// No price columns: totals are always recomputed from authoritative prices.
+// ---------------------------------------------------------------------------
+
+model Cart {
+  id               String     @id @default(uuid()) @db.Uuid
+  userId           String     @db.Uuid
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status           CartStatus @default(ACTIVE)
+  convertedOrderId String?    @db.Uuid // set when the cart became an order (§7)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  items          CartItem[]
+  reservations   InventoryReservation[]
+  convertedOrder Order?                 @relation(fields: [convertedOrderId], references: [id], onDelete: Restrict)
+  // one ACTIVE cart per user — partial unique in SQL
+  // exactly ONE cart converts into a given order (nullable-safe unique):
+
+  @@unique([convertedOrderId])
+  @@index([userId, status])
+}
+
+model CartItem {
+  id        String         @id @default(uuid()) @db.Uuid
+  cartId    String         @db.Uuid
+  cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variantId String         @db.Uuid
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  quantity  Int // CHECK (> 0); server-validated against MAX_QTY_PER_ORDER_LINE
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([cartId, variantId]) // no duplicate active rows for a variant (§13)
+  @@index([variantId]) // post-audit M-4: variant→cart maintenance lookups
+}
+
+// ---------------------------------------------------------------------------
+// WISHLIST — product-level save with optional variant choice (§16)
+// ---------------------------------------------------------------------------
+
+model Wishlist {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items WishlistItem[]
+}
+
+model WishlistItem {
+  id         String          @id @default(uuid()) @db.Uuid
+  wishlistId String          @db.Uuid
+  wishlist   Wishlist        @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  productId  String          @db.Uuid
+  product    Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variantId  String?         @db.Uuid // optional until the user picks one
+  variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  createdAt  DateTime        @default(now())
+
+  @@unique([wishlistId, productId]) // duplicate entries prevented (§16)
+  @@index([wishlistId, createdAt])
+}
+
+// ============================================================================
+// DATABASE PHASE 3 — ORDERS · PAYMENTS · SHIPPING · RETURNS
+// The financially sensitive core (Directive Phase 3; Contract §4/§20/§31).
+//
+// Invariants:
+//  * Orders are IMMUTABLE historical snapshots — reconstructable without any
+//    current catalog/coupon/address data (§1-§3).
+//  * Payments: intent → attempt → verified transaction, never overwritten;
+//    ambiguous outcomes stay UNKNOWN until reconciled (§37).
+//  * Refunds/returns/exchanges are separate records — never rewrite history.
+//  * Every financial/history table is append-only or no-delete (triggers).
+// ============================================================================
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  PROCESSING
+  READY_TO_SHIP
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURN_REQUESTED
+  PARTIALLY_RETURNED
+  RETURNED
+  COMPLETED
+}
+
+enum PaymentIntentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+  UNKNOWN // ambiguous — reconciliation required (§37)
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  INITIATED
+  REDIRECT_REQUIRED
+  VERIFYING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+  UNKNOWN
+}
+
+enum PaymentTransactionType {
+  SALE // verified charge (REFUND money movements live in the Refund model)
+}
+
+enum PaymentEventType {
+  INITIATED
+  REDIRECTED
+  CALLBACK_RECEIVED
+  VERIFY_STARTED
+  VERIFY_SUCCEEDED
+  VERIFY_FAILED
+  STATUS_CHANGED
+  TRANSACTION_RECORDED
+  MARKED_UNKNOWN
+  RECONCILED
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED // duplicate/replay
+  ERROR
+}
+
+enum ReconciliationOutcome {
+  MATCHED
+  DISCREPANCY // internal vs provider mismatch — needs resolution
+  RESOLVED_SUCCEEDED
+  RESOLVED_FAILED
+  RESOLVED_UNKNOWN
+  CHECK_ERROR
+}
+
+enum ActorType {
+  USER
+  ADMIN
+  SYSTEM
+}
+
+enum ShippingStrategy {
+  FLAT
+  WEIGHT_TIERED
+  ORDER_VALUE_TIERED
+  FREE
+}
+
+enum ShipmentStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  RETURNED
+  CANCELLED
+}
+
+enum ReturnRequestType {
+  REFUND
+  EXCHANGE
+}
+
+enum ReturnStatus {
+  REQUESTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  RECEIVED
+  INSPECTED
+  REFUND_PENDING
+  REFUNDED
+  EXCHANGED
+  CANCELLED
+}
+
+enum ReturnItemStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RECEIVED
+  REFUNDED
+  EXCHANGED
+}
+
+enum ReturnReason {
+  WRONG_SIZE
+  DEFECTIVE
+  NOT_AS_DESCRIBED
+  DAMAGED_IN_TRANSIT
+  CHANGED_MIND
+  OTHER
+}
+
+enum ExchangeStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+enum RefundMethod {
+  GATEWAY
+  MANUAL_BANK_TRANSFER
+  STORE_CREDIT
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// ---------------------------------------------------------------------------
+// ORDERS (§1-§7)
+// ---------------------------------------------------------------------------
+
+model Order {
+  id                 String       @id @default(uuid()) @db.Uuid
+  orderNumber        String       @unique // public, collision-safe (§35)
+  userId             String       @db.Uuid
+  user               User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  status             OrderStatus  @default(PENDING_PAYMENT)
+  currency           String       @default("IRT")
+  totalAmount        Int // authoritative total (denorm of snapshot; CHECKs in SQL)
+  paidAmount         Int          @default(0) // live counter — CHECK (0..totalAmount)
+  refundedAmount     Int          @default(0) // live counter — CHECK (<= paidAmount)
+  couponId           String?      @db.Uuid
+  coupon             Coupon?      @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  couponCodeSnapshot String?
+  couponUsage        CouponUsage? // back-relation via CouponUsage.orderId (one per order)
+  contactPhone       String
+  placedAt           DateTime     @default(now())
+  paymentExpiresAt   DateTime? // inventory reservation window
+  paidAt             DateTime?
+  shippedAt          DateTime?
+  deliveredAt        DateTime?
+  cancelledAt        DateTime?
+  cancelReason       String?
+  completedAt        DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  items             OrderItem[]
+  statusHistory     OrderStatusHistory[]
+  address           OrderAddress?
+  financialSnapshot OrderFinancialSnapshot?
+  payments          Payment[]
+  shipments         Shipment[]
+  reservations      InventoryReservation[]
+  returnRequests    ReturnRequest[]
+  refunds           Refund[]
+  convertedCarts    Cart[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([placedAt])
+}
+
+/// Immutable full pricing breakdown captured at order creation (§4).
+/// Append-only (trigger). totalAmount equation enforced by CHECK.
+model OrderFinancialSnapshot {
+  id                     String   @id @default(uuid()) @db.Uuid
+  orderId                String   @unique @db.Uuid
+  order                  Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  subtotalAmount         Int // Σ line totals before order-level discounts
+  productDiscountAmount  Int      @default(0)
+  campaignDiscountAmount Int      @default(0)
+  couponDiscountAmount   Int      @default(0)
+  shippingAmount         Int      @default(0)
+  otherChargesAmount     Int      @default(0)
+  totalAmount            Int
+  createdAt              DateTime @default(now())
+  // (plain orderId index removed post-audit L-1: unique orderId covers it)
+}
+
+/// Historical line item — full snapshot + provenance (§2). Never rewritten.
+model OrderItem {
+  id               String         @id @default(uuid()) @db.Uuid
+  orderId          String         @db.Uuid
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  productId        String         @db.Uuid
+  product          Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variantId        String         @db.Uuid
+  variant          ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  variantPriceId   String?        @db.Uuid // provenance: which price row was used
+  variantPrice     VariantPrice?  @relation(fields: [variantPriceId], references: [id], onDelete: Restrict)
+  campaignRuleId   String?        @db.Uuid // provenance: applied campaign rule
+  campaignRule     CampaignRule?  @relation(fields: [campaignRuleId], references: [id], onDelete: Restrict)
+  productName      String // snapshot — survives renames/archives
+  variantSku       String // snapshot
+  colorName        String?
+  sizeLabel        String?
+  weightGrams      Int?
+  unitPrice        Int // list price snapshot (VariantPrice.basePrice)
+  discountPerUnit  Int            @default(0) // sale discount snapshot (base − sale)
+  finalUnitPrice   Int // unitPrice − discountPerUnit
+  quantity         Int // CHECK (> 0)
+  lineTotal        Int // finalUnitPrice × quantity
+  shippedQuantity  Int            @default(0)
+  returnedQuantity Int            @default(0)
+  refundedQuantity Int            @default(0)
+  createdAt        DateTime       @default(now())
+
+  returnItems   ReturnItem[]
+  shipmentItems ShipmentItem[]
+  refundItems   RefundItem[]
+  exchanges     Exchange[]
+  reviews       Review[]
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([variantId])
+  // post-audit M-4: provenance lookups (price supersede / campaign usage)
+  @@index([variantPriceId])
+  @@index([campaignRuleId])
+}
+
+/// Append-only state history — "who/when/why" for every transition (§6).
+model OrderStatusHistory {
+  id         String       @id @default(uuid()) @db.Uuid
+  orderId    String       @db.Uuid
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  actorType  ActorType    @default(SYSTEM)
+  actorId    String?      @db.Uuid
+  reason     String?
+  metadata   Json?
+  createdAt  DateTime     @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+/// Pure-text shipping address snapshot — independent of user records (§3).
+/// Append-only (trigger).
+model OrderAddress {
+  id                String   @id @default(uuid()) @db.Uuid
+  orderId           String   @unique @db.Uuid
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  receiverFirstName String
+  receiverLastName  String
+  receiverPhone     String
+  provinceName      String
+  cityName          String
+  district          String?
+  postalCode        String
+  line              String
+  unit              String?
+  deliveryNotes     String?
+  createdAt         DateTime @default(now())
+}
+
+/// Durable idempotency registry for order creation / payment completion /
+/// refund requests (§13). Key reuse with a different request body = error.
+model IdempotencyRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  scope          String // e.g. orders.create, payments.complete, refunds.create
+  key            String
+  userId         String?  @db.Uuid
+  requestHash    String // SHA-256 of normalized request
+  responseStatus Int?
+  responseBody   Json?
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// PAYMENTS (§8-§16) — provider-independent: Payment → Attempt → Transaction
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id             String              @id @default(uuid()) @db.Uuid
+  orderId        String              @db.Uuid
+  order          Order               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  amount         Int // CHECK (> 0) — must equal authoritative order total (app-enforced, §16)
+  status         PaymentIntentStatus @default(PENDING)
+  idempotencyKey String?             @unique
+  failureReason  String?
+  initiatedAt    DateTime            @default(now())
+  paidAt         DateTime?
+  closedAt       DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  attempts PaymentAttempt[]
+  // one OPEN payment per order (PENDING/PROCESSING/UNKNOWN) — partial unique
+
+  @@index([orderId])
+  @@index([status])
+}
+
+/// One external gateway attempt. Retries create NEW attempts (§11).
+model PaymentAttempt {
+  id                String               @id @default(uuid()) @db.Uuid
+  paymentId         String               @db.Uuid
+  payment           Payment              @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  provider          String // "mock" | "zarinpal" | future — never in core models (§8)
+  amount            Int // CHECK (> 0) — snapshot of Payment.amount at attempt time
+  status            PaymentAttemptStatus @default(PENDING)
+  providerAuthority String? // gateway authority/reference
+  gatewayUrl        String?
+  failureReason     String?
+  initiatedAt       DateTime             @default(now())
+  completedAt       DateTime?
+  expiresAt         DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  events          PaymentEvent[]
+  transactions    PaymentTransaction[]
+  reconciliations PaymentReconciliation[]
+
+  @@unique([provider, providerAuthority])
+  @@index([paymentId, initiatedAt])
+  @@index([status])
+}
+
+/// Immutable record of a VERIFIED money movement (§9). Append-only (trigger).
+/// Refund money movements are represented by the Refund model.
+model PaymentTransaction {
+  id               String                 @id @default(uuid()) @db.Uuid
+  paymentAttemptId String                 @db.Uuid
+  paymentAttempt   PaymentAttempt         @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+  type             PaymentTransactionType
+  provider         String
+  providerRefId    String // gateway transaction reference (e.g. Zarinpal ref_id)
+  amount           Int // CHECK (> 0)
+  cardMask         String? // e.g. 6104-****-****-1234 — NEVER full PAN/CVV (§36)
+  verifiedAt       DateTime
+  createdAt        DateTime               @default(now())
+
+  refunds Refund[]
+
+  @@unique([provider, providerRefId])
+  @@index([paymentAttemptId])
+}
+
+/// Append-only attempt lifecycle events. dedupeKey makes callback/webhook
+/// processing idempotent — a duplicate provider event CANNOT re-apply (§12).
+model PaymentEvent {
+  id               String           @id @default(uuid()) @db.Uuid
+  paymentAttemptId String           @db.Uuid
+  paymentAttempt   PaymentAttempt   @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+  type             PaymentEventType
+  dedupeKey        String           @unique // provider:authority:type:outcome:ref
+  payload          Json? // sanitized
+  createdAt        DateTime         @default(now())
+
+  @@index([paymentAttemptId, createdAt])
+}
+
+/// Raw webhook envelope. Payload + signature are immutable after receipt
+/// (guard trigger); only status/processedAt/error may advance (§12).
+model WebhookEvent {
+  id             String             @id @default(uuid()) @db.Uuid
+  provider       String
+  externalId     String?
+  eventType      String?
+  signatureValid Boolean            @default(false)
+  status         WebhookEventStatus @default(RECEIVED)
+  payload        Json?
+  error          String?
+  receivedAt     DateTime           @default(now())
+  processedAt    DateTime?
+
+  @@unique([provider, externalId, eventType])
+  @@index([provider, receivedAt])
+}
+
+/// Append-only reconciliation trail per attempt (§14): every provider state
+/// check is recorded; ambiguous history is NEVER overwritten — resolutions
+/// are new rows.
+model PaymentReconciliation {
+  id               String                @id @default(uuid()) @db.Uuid
+  paymentAttemptId String                @db.Uuid
+  paymentAttempt   PaymentAttempt        @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict)
+  internalStatus   String // status at check time
+  providerStatus   String?
+  outcome          ReconciliationOutcome
+  detail           String?
+  providerResponse Json? // sanitized
+  createdAt        DateTime              @default(now())
+
+  @@index([paymentAttemptId, createdAt])
+  @@index([outcome, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// SHIPPING (§17-§20) — method config separate from order history
+// ---------------------------------------------------------------------------
+
+/// Lightweight geography for province-tiered rates. OrderAddress keeps plain
+/// text snapshots (no dependency, §3).
+model Province {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  methodRates ShippingMethodRate[]
+}
+
+model ShippingMethod {
+  id                    String           @id @default(uuid()) @db.Uuid
+  name                  String
+  description           String?
+  carrier               String? // "Tipax", "Post", "Internal" (§18)
+  strategy              ShippingStrategy @default(FLAT)
+  basePrice             Int              @default(0) // CHECK >= 0
+  perKgPrice            Int              @default(0) // CHECK >= 0
+  freeShippingThreshold Int? // order total >= X → free
+  estimatedDaysMin      Int?
+  estimatedDaysMax      Int?
+  isActive              Boolean          @default(true)
+  sortOrder             Int              @default(0)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  rates     ShippingMethodRate[]
+  shipments Shipment[]
+}
+
+/// Province-specific overrides; provinceId NULL = countrywide default
+/// (exactly one default per method — partial unique).
+model ShippingMethodRate {
+  id                    Int            @id @default(autoincrement())
+  methodId              String         @db.Uuid
+  method                ShippingMethod @relation(fields: [methodId], references: [id], onDelete: Cascade)
+  provinceId            Int?
+  province              Province?      @relation(fields: [provinceId], references: [id], onDelete: Restrict)
+  basePrice             Int? // override when set
+  perKgPrice            Int?
+  freeShippingThreshold Int?
+
+  @@index([methodId])
+  @@index([provinceId]) // post-audit M-4: province→rates shipping lookup
+}
+
+model Shipment {
+  id                  String          @id @default(uuid()) @db.Uuid
+  shipmentNumber      String          @unique // public identifier
+  orderId             String          @db.Uuid
+  order               Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  methodId            String?         @db.Uuid
+  method              ShippingMethod? @relation(fields: [methodId], references: [id], onDelete: SetNull)
+  carrierName         String?
+  trackingNumber      String?
+  status              ShipmentStatus  @default(PENDING)
+  costAmount          Int             @default(0) // snapshot — CHECK >= 0
+  weightGrams         Int?
+  estimatedDeliveryAt DateTime?
+  shippedAt           DateTime?
+  deliveredAt         DateTime?
+  note                String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  items         ShipmentItem[]
+  statusHistory ShipmentStatusHistory[]
+  exchanges     Exchange[]
+  // (carrierName, trackingNumber) unique WHERE trackingNumber IS NOT NULL — SQL
+
+  @@index([orderId])
+  @@index([status])
+}
+
+model ShipmentItem {
+  id          String    @id @default(uuid()) @db.Uuid
+  shipmentId  String    @db.Uuid
+  shipment    Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+  orderItemId String    @db.Uuid
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  quantity    Int // CHECK (> 0); Σ per orderItem ≤ orderItem.quantity (app+SQL check on OrderItem)
+
+  @@unique([shipmentId, orderItemId])
+  @@index([orderItemId])
+}
+
+/// Append-only shipment state history (§20).
+model ShipmentStatusHistory {
+  id         String          @id @default(uuid()) @db.Uuid
+  shipmentId String          @db.Uuid
+  shipment   Shipment        @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+  fromStatus ShipmentStatus?
+  toStatus   ShipmentStatus
+  actorType  ActorType       @default(SYSTEM)
+  actorId    String?         @db.Uuid
+  note       String?
+  createdAt  DateTime        @default(now())
+
+  @@index([shipmentId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// RETURNS / EXCHANGES (§21-§24) — separate from Orders, partial-safe
+// ---------------------------------------------------------------------------
+
+model ReturnRequest {
+  id           String            @id @default(uuid()) @db.Uuid
+  returnNumber String            @unique // public identifier
+  orderId      String            @db.Uuid
+  order        Order             @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  userId       String            @db.Uuid
+  user         User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  type         ReturnRequestType
+  status       ReturnStatus      @default(REQUESTED)
+  reason       ReturnReason
+  description  String?           @db.Text
+  adminNote    String?
+  requestedAt  DateTime          @default(now())
+  reviewedAt   DateTime?
+  receivedAt   DateTime?
+  closedAt     DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  items     ReturnItem[]
+  exchanges Exchange[]
+  refunds   Refund[]
+
+  @@index([orderId])
+  @@index([userId, requestedAt])
+  @@index([status])
+}
+
+model ReturnItem {
+  id                String           @id @default(uuid()) @db.Uuid
+  returnRequestId   String           @db.Uuid
+  returnRequest     ReturnRequest    @relation(fields: [returnRequestId], references: [id], onDelete: Restrict)
+  orderItemId       String           @db.Uuid
+  orderItem         OrderItem        @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  requestedQuantity Int // CHECK (> 0); ≤ remaining quantity (app-verified)
+  approvedQuantity  Int? // CHECK (0..requestedQuantity) — partial returns (§22)
+  reason            String?
+  condition         String? // UNOPENED | OPENED | DEFECTIVE …
+  status            ReturnItemStatus @default(PENDING)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  exchanges Exchange[]
+
+  @@index([returnRequestId])
+  @@index([orderItemId])
+}
+
+/// Exchange = separate business operation; NEVER rewrites the original
+/// OrderItem (§24). One exchange per return item (unique).
+model Exchange {
+  id                    String         @id @default(uuid()) @db.Uuid
+  returnRequestId       String         @db.Uuid
+  returnRequest         ReturnRequest  @relation(fields: [returnRequestId], references: [id], onDelete: Restrict)
+  returnItemId          String         @unique @db.Uuid
+  returnItem            ReturnItem     @relation(fields: [returnItemId], references: [id], onDelete: Restrict)
+  originalOrderItemId   String         @db.Uuid
+  originalOrderItem     OrderItem      @relation(fields: [originalOrderItemId], references: [id], onDelete: Restrict)
+  targetVariantId       String         @db.Uuid // M → L / Black → White
+  targetVariant         ProductVariant @relation(fields: [targetVariantId], references: [id], onDelete: Restrict)
+  quantity              Int // CHECK (> 0)
+  priceDifferenceAmount Int            @default(0) // SIGNED delta: >0 customer pays more, <0 store refunds difference
+  status                ExchangeStatus @default(REQUESTED)
+  replacementShipmentId String?        @db.Uuid
+  replacementShipment   Shipment?      @relation(fields: [replacementShipmentId], references: [id], onDelete: Restrict)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  @@index([returnRequestId])
+}
+
+// ---------------------------------------------------------------------------
+// REFUNDS (§25-§27) — separate financial records, idempotent, provider-free
+// ---------------------------------------------------------------------------
+
+model Refund {
+  id                   String              @id @default(uuid()) @db.Uuid
+  refundNumber         String              @unique // public identifier
+  orderId              String              @db.Uuid
+  order                Order               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  returnRequestId      String?             @db.Uuid
+  returnRequest        ReturnRequest?      @relation(fields: [returnRequestId], references: [id], onDelete: Restrict)
+  paymentTransactionId String?             @db.Uuid // the verified SALE being refunded
+  paymentTransaction   PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id], onDelete: Restrict)
+  amount               Int // CHECK (> 0); Σ refunds ≤ paidAmount (app + Order CHECKs)
+  method               RefundMethod        @default(MANUAL_BANK_TRANSFER)
+  provider             String?
+  providerRef          String?
+  status               RefundStatus        @default(PENDING)
+  idempotencyKey       String?             @unique // durable dedupe (§26)
+  includesShipping     Boolean             @default(false)
+  failureReason        String?
+  processedById        String?             @db.Uuid
+  processedAt          DateTime?
+  note                 String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  items RefundItem[]
+  // one in-flight refund per return request — partial unique (§26)
+
+  @@index([orderId])
+  @@index([status])
+  @@index([paymentTransactionId]) // post-audit M-4: refunds per gateway transaction
+}
+
+/// Append-only item-level refund allocations (§25, module 19).
+model RefundItem {
+  id          String    @id @default(uuid()) @db.Uuid
+  refundId    String    @db.Uuid
+  refund      Refund    @relation(fields: [refundId], references: [id], onDelete: Restrict)
+  orderItemId String    @db.Uuid
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  amount      Int // CHECK (>= 0) — allocation of Refund.amount to this line
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([refundId, orderItemId])
+  @@index([orderItemId])
+}
+
+// ============================================================================
+// DATABASE PHASE 4 — ENGAGEMENT · ADMIN · AUDIT · SYSTEM (final DB phase)
+// Reviews/ratings · Notifications (provider-independent) · AuditLog ·
+// Media metadata · System configuration · Feature flags · Reporting support
+// ============================================================================
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  HIDDEN
+}
+
+enum MediaPurpose {
+  PRODUCT_IMAGE
+  PRODUCT_VIDEO
+  REVIEW_MEDIA
+  OTHER
+}
+
+enum MediaScanStatus {
+  PENDING // awaiting validation
+  ACTIVE
+  REJECTED
+}
+
+enum NotificationType {
+  ORDER_CREATED
+  ORDER_CANCELLED
+  ORDER_COMPLETED
+  PAYMENT_CONFIRMED
+  PAYMENT_FAILED
+  ORDER_PROCESSING
+  ORDER_SHIPPED
+  ORDER_DELIVERED
+  RETURN_REQUESTED
+  RETURN_APPROVED
+  RETURN_REJECTED
+  REFUND_COMPLETED
+  EXCHANGE_COMPLETED
+  IDENTITY_VERIFIED
+  BACK_IN_STOCK
+  SECURITY_EVENT
+  PROMOTIONAL
+  GENERIC
+}
+
+enum NotificationChannel {
+  IN_APP
+  SMS
+  EMAIL
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  SKIPPED // preference disabled / channel unavailable
+  READ // in-app read receipts
+}
+
+enum AuditActorType {
+  USER
+  ADMIN
+  SYSTEM
+}
+
+// ---------------------------------------------------------------------------
+// REVIEWS (§1-§6) — verified purchase is a DATABASE relationship, never a
+// client flag: a guard trigger refuses isVerifiedPurchase=true unless the
+// linked OrderItem belongs to the SAME user on a PAID order.
+// ---------------------------------------------------------------------------
+
+model Review {
+  id                 String       @id @default(uuid()) @db.Uuid
+  productId          String       @db.Uuid
+  product            Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  userId             String       @db.Uuid
+  user               User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  orderItemId        String?      @unique @db.Uuid // the purchased line (verified purchase §2)
+  orderItem          OrderItem?   @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  rating             Int // CHECK 1..5 (§5)
+  title              String?
+  body               String?      @db.Text
+  isVerifiedPurchase Boolean      @default(false) // DB-guarded by trigger — cannot be faked
+  status             ReviewStatus @default(PENDING)
+  moderationNote     String?
+  moderatedById      String?      @db.Uuid
+  moderatedAt        DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  media ReviewMedia[]
+
+  @@unique([productId, userId]) // one review per product per user (§3)
+  @@index([productId, status, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+/// Media REFERENCES for reviews — never binary blobs (§6).
+model ReviewMedia {
+  id           String     @id @default(uuid()) @db.Uuid
+  reviewId     String     @db.Uuid
+  review       Review     @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  mediaAssetId String     @db.Uuid
+  mediaAsset   MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  url          String // denormalized public URL
+  sortOrder    Int        @default(0)
+  createdAt    DateTime   @default(now())
+
+  @@unique([reviewId, mediaAssetId])
+  @@index([reviewId, sortOrder])
+}
+
+// ---------------------------------------------------------------------------
+// NOTIFICATIONS (§7-§10) — provider-independent; Kavenegar/SMTP live behind
+// application adapters. dedupeKey prevents duplicate business events from
+// double-notifying (duplicate payment callback ⇒ ONE notification).
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  data      Json? // safe display metadata only (§24)
+  dedupeKey String?          @unique // e.g. "payment:{txnId}:PAID" (§10)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  deliveries NotificationDelivery[]
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+}
+
+model NotificationDelivery {
+  id                String                     @id @default(uuid()) @db.Uuid
+  notificationId    String                     @db.Uuid
+  notification      Notification               @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  channel           NotificationChannel
+  provider          String? // "kavenegar" | "console" | "smtp" — filled at send time (§8)
+  status            NotificationDeliveryStatus @default(PENDING)
+  attempts          Int                        @default(0)
+  providerMessageId String?
+  error             String?
+  sentAt            DateTime?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  @@unique([notificationId, channel]) // one delivery per channel — no dupes (§10)
+  @@index([status, createdAt])
+}
+
+model NotificationPreference {
+  userId             String   @id @db.Uuid
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inAppEnabled       Boolean  @default(true)
+  smsEnabled         Boolean  @default(true)
+  emailEnabled       Boolean  @default(true)
+  promotionalEnabled Boolean  @default(false)
+  updatedAt          DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// AUDIT LOG (§13-§15) — append-only, hash-chained, NO user FK: actor identity
+// is SNAPSHOTTED so records survive user deletion/anonymization.
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  seq           BigInt         @id @default(autoincrement()) @db.BigInt
+  id            String         @unique @default(uuid()) @db.Uuid
+  actorType     AuditActorType
+  actorId       String?        @db.Uuid // reference only — deliberately NO FK (§15)
+  actorSnapshot Json? // { name, phone, role } at action time — survives deletion
+  actorRole     String?
+  action        String // e.g. PRODUCT_PRICE_CHANGED, REFUND_COMPLETED, ROLE_ASSIGNED
+  entityType    String?
+  entityId      String?
+  oldValues     Json? // sanitized diffs — never secrets/OTP/identity data (§24)
+  newValues     Json?
+  metadata      Json?
+  ip            String?
+  userAgent     String?
+  requestId     String?
+  prevHash      String? // SHA-256 of the previous row (chain head)
+  rowHash       String // SHA-256(prevHash ‖ canonical fields ‖ AUDIT_HASH_KEY)
+  createdAt     DateTime       @default(now())
+
+  @@index([action, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// FILE / MEDIA METADATA (§16) — generic registry; binaries live in object
+// storage; provider replaceable (local | s3-compatible).
+// ---------------------------------------------------------------------------
+
+model MediaAsset {
+  id           String          @id @default(uuid()) @db.Uuid
+  key          String          @unique // storage object key (S3-style)
+  provider     String // local | s3
+  url          String // public URL/CDN reference
+  mimeType     String // verified server-side — never trusted from client
+  sizeBytes    Int // CHECK (>= 0)
+  checksum     String? // SHA-256 of content
+  width        Int?
+  height       Int?
+  purpose      MediaPurpose
+  scanStatus   MediaScanStatus @default(PENDING) // upload validation state
+  uploadedById String?         @db.Uuid
+  uploadedBy   User?           @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  productMedia ProductMedia[]
+  reviewMedia  ReviewMedia[]
+
+  @@index([purpose, createdAt])
+  @@index([scanStatus])
+}
+
+// ---------------------------------------------------------------------------
+// SYSTEM CONFIGURATION (§18-§19) — dynamic NON-SECRET settings only.
+// Secrets stay in environment/secret management (enforced by policy + audit).
+// ---------------------------------------------------------------------------
+
+model SystemSetting {
+  key         String   @unique // e.g. "store.name", "shipping.defaultMethodId"
+  value       String   @db.Text // string-encoded; typed parsing app-side
+  valueType   String   @default("string") // string | integer | boolean | json
+  description String?
+  isPublic    Boolean  @default(false) // safe to expose to frontend
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isPublic])
+}
+
+model FeatureFlag {
+  key         String   @unique // e.g. "checkout.v2", "reviews", "campaigns"
+  isEnabled   Boolean  @default(false)
+  description String?
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
