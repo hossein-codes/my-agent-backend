@@ -9,7 +9,7 @@ import { PrismaClient } from '@prisma/client';
 
 // Env loading lives in its own module so it can be unit-tested.
 // Precedence: existing env → .env.development → .env
-loadEnvFiles(['.env.development', '.env'], 'DATABASE_URL');
+loadEnvFiles(['.env', '.env.development'], 'DATABASE_URL');
 
 const prisma = new PrismaClient();
 

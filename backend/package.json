@@ -24,10 +24,12 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "infra:setup": "bash scripts/devbox.sh setup",
+    "infra:setup": "node scripts/setup-env.mjs && docker compose up -d",
     "infra:setup:win": "powershell -ExecutionPolicy Bypass -File scripts/devbox.ps1",
     "db:migrate": "prisma migrate deploy",
-    "seed": "prisma db seed"
+    "seed": "prisma db seed",
+    "env:setup": "node scripts/setup-env.mjs",
+    "db:check": "node scripts/check-db.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
