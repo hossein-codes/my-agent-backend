@@ -147,3 +147,15 @@ npm run start:dev 2>&1 | tail -80
 - `docs/api-reference-fa.md` — ۱۱۱ endpoint، ۵۱ DTO
 - `docs/db-integrity-checklist-fa.md` — ۴۵ مورد SQL که Prisma نمی‌سازد
 - `docs/backend-review-fa.md` — بررسی کامل ساختار + باگ‌های پیدا‌شده
+
+## Windows (PowerShell)
+
+```powershell
+npm run infra:setup:win      # Docker Desktop must be running
+npm run prisma:migrate:dev
+npm run seed
+npm run start:dev
+```
+
+Troubleshooting, including the `wsl --update` and `DATABASE_URL not found`
+errors, is documented in [`docs/local-setup-windows-fa.md`](../docs/local-setup-windows-fa.md).
