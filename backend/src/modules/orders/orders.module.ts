@@ -3,9 +3,9 @@ import { OrderService } from './order.service';
 import { OrderController, AdminOrderController } from './order.controller';
 import { InventoryModule } from '../inventory/inventory.module';
 import { RefundsModule } from '../refunds/refunds.module';
-
+import { CouponsModule } from '../coupons/coupons.module';
 @Module({
-  imports: [InventoryModule, forwardRef(() => RefundsModule)],
+imports: [InventoryModule, CouponsModule, forwardRef(() => RefundsModule)],
   providers: [OrderService],
   controllers: [OrderController, AdminOrderController],
   exports: [OrderService],

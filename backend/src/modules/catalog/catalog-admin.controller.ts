@@ -293,7 +293,7 @@ export class AdminCatalogController {
         await tx.inventoryMovement.create({
           data: {
             variantId: created.id,
-            type: 'RECEIPT',
+            type: 'RESTOCK',
             quantity: dto.initialStock,
             onHandAfter: snapshot.onHand,
             reservedAfter: snapshot.reserved,

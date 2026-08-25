@@ -43,7 +43,7 @@ describe('InventoryService.reserve', () => {
     expect(result.reservationId).toBe('res-1');
     expect(db.inventoryReservation.create).toHaveBeenCalled();
     expect(db.inventoryMovement.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ type: 'RESERVE', quantity: 0 }) }),
+      expect.objectContaining({ data: expect.objectContaining({ type: 'RESERVATION', quantity: 0 }) }),
     );
   });
 
@@ -89,11 +89,11 @@ describe('InventoryService.release', () => {
     expect(db.$executeRaw).not.toHaveBeenCalled();
   });
 
-  it('frees the hold and writes a RELEASE ledger row', async () => {
+  it('frees the hold and writes a RESERVATION_RELEASE ledger row', async () => {
     const { svc, db } = svcWith();
     await expect(svc.release('res-1', 'CANCELLED')).resolves.toBe(true);
     expect(db.inventoryMovement.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ type: 'RELEASE' }) }),
+      expect.objectContaining({ data: expect.objectContaining({ type: 'RESERVATION_RELEASE' }) }),
     );
   });
 
@@ -145,7 +145,7 @@ describe('InventoryService.adjust', () => {
     await svc.adjust({ variantId: 'v1', delta: 50, type: 'RECEIPT', actorId: 'admin-1' });
     expect(db.inventoryMovement.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ type: 'RECEIPT', quantity: 50, actorId: 'admin-1', source: 'ADMIN' }),
+        data: expect.objectContaining({ type: 'RESTOCK', quantity: 50, actorId: 'admin-1', source: 'ADMIN' }),
       }),
     );
   });

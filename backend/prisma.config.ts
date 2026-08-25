@@ -1,21 +1,13 @@
 /**
  * Prisma CLI configuration (replaces the deprecated `package.json#prisma` key).
  *
- * Why this file exists: as soon as it is present, the Prisma CLI stops loading
- * any env file itself and prints
- *
- *     "Prisma config detected, skipping environment variable loading"
- *
- * so DATABASE_URL has to be loaded *here*, before the CLI resolves the schema
- * and the datasource — otherwise every command fails with
- * "Environment variable not found: DATABASE_URL".
- *
- * Order matters. `loadEnvFiles` stops at the first file that provides
- * `DATABASE_URL`, so the list must start with the plain `.env` that
- * `npm run env:setup` creates (and that both Nest and this CLI read). The
- * per-environment file stays as the fallback for anyone who keeps one.
+ * IMPORTANT: when this file exists the Prisma CLI stops loading `.env` by
+ * itself ("Prisma config detected, skipping environment variable loading"),
+ * so loading env here is mandatory — not a convenience.
  *
  * Precedence: real process env → .env → .env.<NODE_ENV>
+ * `.env` comes first because that is the file `npm run env:setup` writes and
+ * the only one the Prisma CLI would otherwise understand.
  */
 import { loadEnvFiles } from './prisma/env-loader';
 

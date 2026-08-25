@@ -150,7 +150,7 @@ export class PaymentService {
     const cancelledByUser = typeof input.status === 'string' && input.status.toLowerCase() !== 'ok';
     if (cancelledByUser && !input.eventType) {
       await this.prisma.paymentAttempt.updateMany({
-        where: { id: attempt.id, status: { in: ['PENDING', 'PROCESSING'] } },
+        where: { id: attempt.id, status: { in: ['PENDING', 'INITIATED', 'REDIRECT_REQUIRED', 'VERIFYING'] } },
         data: { status: 'FAILED', failureReason: 'cancelled_at_gateway', completedAt: new Date() },
       });
       return { outcome: 'CANCELLED' };
@@ -256,7 +256,8 @@ export class PaymentService {
       await tx.paymentTransaction.create({
         data: {
           paymentAttemptId: attemptId,
-          type: 'CAPTURE',
+          // The schema models a verified charge as SALE; refunds are separate.
+          type: 'SALE',
           provider: attempt.provider,
           providerRefId: refId,
           amount: attempt.amount,
@@ -341,7 +342,12 @@ export class PaymentService {
       await this.prisma.paymentEvent.create({
         data: {
           paymentAttemptId,
-          type: outcome === 'OK' ? 'VERIFIED_OK' : outcome === 'CANCELLED' ? 'CANCELLED' : outcome === 'UNKNOWN' ? 'VERIFICATION_UNKNOWN' : 'VERIFIED_FAILED',
+          type:
+            outcome === 'OK'
+              ? 'VERIFY_SUCCEEDED'
+              : outcome === 'UNKNOWN'
+                ? 'MARKED_UNKNOWN'
+                : 'VERIFY_FAILED',
           dedupeKey,
           payload: detail as never,
         },

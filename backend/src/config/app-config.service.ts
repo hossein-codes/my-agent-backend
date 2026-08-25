@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MEMORY_REDIS_URL } from '../shared/redis/memory-redis';
 
 /**
  * Typed, validated view over `process.env`.
@@ -61,23 +60,14 @@ export class AppConfigService {
     return this.required('DATABASE_URL');
   }
   /**
-   * Defaults to `127.0.0.1` rather than `localhost`: on Windows `localhost`
-   * resolves to `::1` first, while a locally installed server often listens on
-   * IPv4 only — the connect then fails with ECONNREFUSED for no visible reason.
-   *
-   * The literal value `memory` selects the in-process Redis stand-in
-   * (`shared/redis/memory-redis.ts`) so a dev box with no Redis can still run
-   * the OTP flow. It is single-process and non-persistent, so selecting it in
-   * production is a configuration error and fails fast here.
+   * A real Redis URL, or the literal `memory` to use the in-process store
+   * (development convenience — see `MemoryRedis`). `memory` is rejected in
+   * production, where OTPs and locks must survive restarts and span instances.
    */
   get redisUrl(): string {
     const url = this.get('REDIS_URL', 'redis://127.0.0.1:6379/0');
-    if (url === MEMORY_REDIS_URL && this.isProduction) {
-      throw new Error(
-        'REDIS_URL=memory is a development-only mode (in-process, non-persistent, ' +
-          'not shared between instances). Set REDIS_URL to a real redis:// or ' +
-          'rediss:// endpoint in production.',
-      );
+    if (url === 'memory' && this.get('NODE_ENV', 'development') === 'production') {
+      throw new Error('REDIS_URL=memory is not allowed in production — configure a real Redis server.');
     }
     return url;
   }

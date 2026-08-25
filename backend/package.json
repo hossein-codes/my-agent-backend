@@ -25,11 +25,12 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "infra:setup": "node scripts/setup-env.mjs && docker compose up -d",
-    "infra:setup:win": "node scripts/setup-env.mjs",
+    "infra:setup:win": "powershell -ExecutionPolicy Bypass -File scripts/devbox.ps1",
     "db:migrate": "prisma migrate deploy",
     "seed": "prisma db seed",
     "env:setup": "node scripts/setup-env.mjs",
-    "db:check": "node scripts/check-db.mjs"
+    "db:check": "node scripts/check-db.mjs",
+    "admin:grant": "node scripts/grant-admin.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -45,7 +46,7 @@
     "helmet": "^8.0.0",
     "ioredis": "^5.4.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",
@@ -57,14 +58,15 @@
     "@types/jest": "^29.5.14",
     "@types/multer": "^2.2.0",
     "@types/node": "^20.17.6",
-    "@types/supertest": "^6.0.2",
+    "@types/supertest": "^6.0.3",
+    "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^9.14.0",
     "eslint-config-prettier": "^9.1.0",
     "jest": "^29.7.0",
     "prettier": "^3.3.3",
     "prisma": "^6.0.0",
     "rimraf": "^6.0.1",
-    "supertest": "^7.0.0",
+    "supertest": "^7.2.2",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2",

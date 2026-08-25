@@ -151,7 +151,7 @@ export class AuditService {
     newValues: Prisma.JsonValue | null;
   }): string {
     return this.hash(row.prevHash, 
-      { actorType: row.actorType, actorId: row.actorId, actorRole: row.actorRole },
+      { actorType: row.actorType as AuditActorType, actorId: row.actorId, actorRole: row.actorRole },
       {
         action: row.action,
         entityType: row.entityType,
@@ -162,7 +162,14 @@ export class AuditService {
     );
   }
 
-  private toJson(value: Record<string, unknown> | null): Prisma.InputJsonValue | null {
+  /**
+   * Prisma distinguishes "SQL NULL" from "JSON null" on nullable Json columns,
+   * so a plain `null` is not assignable there — `Prisma.DbNull` is the sentinel
+   * that writes a real SQL NULL.
+   */
+  private toJson(
+    value: Record<string, unknown> | null,
+  ): Prisma.InputJsonValue | typeof Prisma.DbNull {
     return value === null ? Prisma.DbNull : (value as Prisma.InputJsonValue);
   }
 }

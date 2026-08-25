@@ -79,7 +79,7 @@ export class RefundsService {
       }
 
       const transaction = await tx.paymentTransaction.findFirst({
-        where: { paymentAttempt: { payment: { orderId: order.id } }, type: 'CAPTURE' },
+        where: { paymentAttempt: { payment: { orderId: order.id } }, type: 'SALE' },
         orderBy: { verifiedAt: 'desc' },
       });
 

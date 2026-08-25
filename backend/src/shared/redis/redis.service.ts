@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import Redis, { type RedisOptions } from 'ioredis';
 import { AppConfigService } from '../../config/app-config.service';
-import { MEMORY_REDIS_URL, MemoryRedis } from './memory-redis';
+import { MemoryRedis } from './memory-redis';
 
 /**
  * Redis holds ONLY ephemeral data: OTPs, rate-limit counters, locks, caches.
@@ -13,39 +13,28 @@ import { MEMORY_REDIS_URL, MemoryRedis } from './memory-redis';
  *   - rate limiting  → fail OPEN (`tryRateLimit` returns allow on error)
  *   - OTP / locks    → fail CLOSED (`client` calls throw, caller maps to 503)
  *
- * `REDIS_URL=memory` swaps ioredis for `MemoryRedis`, an in-process stand-in
- * that exists so the OTP/rate-limit paths can be exercised on a machine with
- * no Redis available (Redis has no official Windows build). Development only —
- * see the warnings in `memory-redis.ts`.
+ * Setting `REDIS_URL=memory` swaps in an in-process implementation so the API
+ * runs with nothing installed. It is single-process and non-durable, so
+ * `AppConfigService` refuses it when NODE_ENV=production.
  */
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('Redis');
   private readonly redis: Redis;
-  /** True when `redis` is the in-process stand-in instead of a real client. */
-  private readonly inMemory: boolean;
   private connected = false;
+  private readonly inMemory: boolean;
 
   constructor(private readonly config: AppConfigService) {
-    if (this.config.redisUrl === MEMORY_REDIS_URL) {
-      // Cast: MemoryRedis implements only the command surface this app uses
-      // (see RedisCommandSurface), not the whole ioredis class. Keeping the
-      // field typed as `Redis` means no call site has to know which client it
-      // got, and an unsupported command is a compile error rather than a
-      // runtime surprise.
+    this.inMemory = this.config.redisUrl === 'memory';
+
+    if (this.inMemory) {
+      // Structurally compatible with the subset of ioredis this app calls.
       this.redis = new MemoryRedis() as unknown as Redis;
-      this.inMemory = true;
-      // Nothing to connect to, so report healthy immediately — otherwise
-      // `isAvailable` stays false and OtpService answers 503 for every login.
       this.connected = true;
-      this.logger.warn(
-        'REDIS_URL=memory — using the in-process Redis stand-in (single process, ' +
-          'no persistence, no shared state). Development only, never production.',
-      );
+      this.logger.warn('using the in-memory store (REDIS_URL=memory) — development only');
       return;
     }
 
-    this.inMemory = false;
     const options: RedisOptions = {
       lazyConnect: true,
       // Fail fast rather than queueing commands behind a dead server.
@@ -82,10 +71,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
-    // The in-memory client has no connection to establish (and its
-    // `connect()` is a no-op), so there is nothing to await or log.
     if (this.inMemory) return;
-
     try {
       await this.redis.connect();
     } catch (err) {

@@ -68,7 +68,12 @@ export class FilesService {
         mimeType: detected,
         sizeBytes: input.buffer.length,
         checksum,
-        purpose: input.purpose,
+        // MediaPurpose has no BRAND_LOGO/COLLECTION_IMAGE member; those are
+        // API-level purposes that still drive the storage key above.
+        purpose:
+          input.purpose === 'PRODUCT_IMAGE' || input.purpose === 'REVIEW_MEDIA'
+            ? input.purpose
+            : 'OTHER',
         // Marked ACTIVE immediately for the local provider; a real deployment
         // would run a malware scan first and flip this later.
         scanStatus: 'ACTIVE',

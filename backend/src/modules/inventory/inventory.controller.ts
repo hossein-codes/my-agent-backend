@@ -5,6 +5,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Permissions } from '../../common/decorators/auth.decorators';
 import { CurrentUser, type AuthenticatedUser } from '../../common/decorators/auth.decorators';
 import { PaginationDto, paginated } from '../../common/dto/pagination.dto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { InventoryService } from './inventory.service';
 
@@ -31,7 +32,9 @@ export class AdminInventoryController {
   @Get('low-stock')
   @Permissions('inventory.read')
   async lowStock(@Query() pagination: PaginationDto) {
-    const where = { variant: { isActive: true, product: { status: 'ACTIVE', deletedAt: null } } };
+    const where: Prisma.InventoryWhereInput = {
+      variant: { isActive: true, product: { status: 'ACTIVE', deletedAt: null } },
+    };
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.inventory.findMany({
         where,

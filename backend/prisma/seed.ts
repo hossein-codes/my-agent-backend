@@ -8,9 +8,7 @@ import { loadEnvFiles } from './env-loader';
 import { PrismaClient } from '@prisma/client';
 
 // Env loading lives in its own module so it can be unit-tested.
-// `.env` comes first: it is the file `npm run env:setup` creates and the one
-// the Prisma CLI reads, so seed and CLI always resolve the same database.
-// Precedence: existing env → .env → .env.development
+// Precedence: existing env → .env.development → .env
 loadEnvFiles(['.env', '.env.development'], 'DATABASE_URL');
 
 const prisma = new PrismaClient();

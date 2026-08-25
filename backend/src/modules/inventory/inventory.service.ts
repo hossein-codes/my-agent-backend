@@ -102,7 +102,7 @@ export class InventoryService {
       await tx.inventoryMovement.create({
         data: {
           variantId: input.variantId,
-          type: 'RESERVE',
+          type: 'RESERVATION',
           quantity: 0, // onHand is unchanged; only the hold moved
           onHandAfter: snapshot.onHand,
           reservedAfter: snapshot.reserved,
@@ -138,7 +138,7 @@ export class InventoryService {
       await client.inventoryMovement.create({
         data: {
           variantId: reservation.variantId,
-          type: 'RELEASE',
+          type: 'RESERVATION_RELEASE',
           quantity: 0,
           onHandAfter: snapshot.onHand,
           reservedAfter: snapshot.reserved,
@@ -232,7 +232,8 @@ export class InventoryService {
       await tx.inventoryMovement.create({
         data: {
           variantId: input.variantId,
-          type: input.type,
+          // The API says RECEIPT; the schema calls warehouse intake RESTOCK.
+          type: input.type === 'RECEIPT' ? 'RESTOCK' : input.type,
           quantity: input.delta,
           onHandAfter: snapshot.onHand,
           reservedAfter: snapshot.reserved,

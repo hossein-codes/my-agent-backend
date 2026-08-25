@@ -1,0 +1,7 @@
+{
+  "devDependencies": {
+    "@types/supertest": "^7.2.1",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "supertest": "^7.2.2"
+  }
+}
