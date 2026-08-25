@@ -32,7 +32,10 @@
     "db:check": "node scripts/check-db.mjs",
     "admin:grant": "node scripts/grant-admin.mjs",
     "test:all": "npm run test -- --runInBand && npm run test:e2e",
-    "prisma:integrity": "prisma db execute --file prisma/integrity.sql"
+    "prisma:integrity": "prisma db execute --file prisma/integrity.sql",
+    "db:integrity": "node scripts/apply-integrity.mjs",
+    "db:verify": "node scripts/verify-integrity.mjs",
+    "db:audit-integrity": "node scripts/audit-integrity.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
