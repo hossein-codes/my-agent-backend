@@ -60,7 +60,6 @@ export class PaymentsController {
 
   /** Customer-initiated retry/verify — safe to call repeatedly (idempotent). */
   @Post('verify')
-  @Public()
   @UseGuards(RateLimitGuard) @RateLimit('payment.callback')
   async verify(@Body('authority') authority: string) {
     const attempt = await this.prisma.paymentAttempt.findFirst({

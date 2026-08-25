@@ -6,6 +6,8 @@ import { NotificationService } from '../notifications/notification.service';
 import { AuditService } from '../audit/audit.service';
 import { ErrorCodes } from '../../common/errors/error-codes';
 import type { PaymentProvider, VerifyResult } from '../providers/payment/payment-provider.port';
+import { PaymentsController } from './payments.controller';
+import { IS_PUBLIC_KEY } from '../../common/decorators/auth.decorators';
 
 /**
  * The money path. These tests exist because a bug here is unrecoverable:
@@ -195,6 +197,13 @@ describe('PaymentService.verifyAndSettle', () => {
       expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED' }) }),
     );
     expect(consume).not.toHaveBeenCalled();
+  });
+});
+
+describe('PaymentsController authentication metadata', () => {
+  it('does not mark the customer verify endpoint as public', () => {
+    const metadata = Reflect.getMetadata(IS_PUBLIC_KEY, PaymentsController.prototype.verify);
+    expect(metadata).not.toBe(true);
   });
 });
 
