@@ -82,7 +82,7 @@ describeE2e(
       await expect(harness.prisma.product.count()).resolves.toBe(before);
       await expect(
         harness.prisma.$queryRaw<Array<{ table_name: string }>>`
-        SELECT table_name
+        SELECT table_name::text
           FROM information_schema.tables
          WHERE table_schema = 'public' AND table_name = 'Product'
       `,

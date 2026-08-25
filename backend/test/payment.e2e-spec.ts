@@ -119,7 +119,7 @@ describeE2e("payments and money constraints (real PostgreSQL)", () => {
     const columns = await harness.prisma.$queryRaw<
       Array<{ table_name: string; data_type: string }>
     >`
-      SELECT table_name, data_type
+      SELECT table_name::text, data_type::text
         FROM information_schema.columns
        WHERE table_schema = 'public'
          AND column_name = 'basePrice'
