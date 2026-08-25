@@ -1,10 +1,7 @@
 import { InventoryService } from "../src/modules/inventory/inventory.service";
-import { E2eHarness, isE2eAvailable } from "./harness";
+import { E2eHarness } from "./harness";
 
-const availability = isE2eAvailable();
-if (!availability.available)
-  console.warn(`[inventory e2e skipped] ${availability.reason}`);
-const describeE2e = availability.available ? describe : describe.skip;
+const describeE2e = describe;
 
 describeE2e("inventory concurrency (real PostgreSQL)", () => {
   let harness: E2eHarness;

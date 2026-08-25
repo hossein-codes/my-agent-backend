@@ -1,10 +1,7 @@
 import request from "supertest";
-import { E2eHarness, isE2eAvailable } from "./harness";
+import { E2eHarness } from "./harness";
 
-const availability = isE2eAvailable();
-if (!availability.available)
-  console.warn(`[catalog e2e skipped] ${availability.reason}`);
-const describeE2e = availability.available ? describe : describe.skip;
+const describeE2e = describe;
 
 describeE2e(
   "public catalog visibility and query safety (real PostgreSQL)",

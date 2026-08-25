@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { Pool } from "pg";
 import type { INestApplication } from "@nestjs/common";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { PrismaService } from "../src/shared/prisma/prisma.service";
@@ -29,7 +32,7 @@ export function isE2eAvailable(): E2eAvailability {
   if (inheritedReason) return { available: false, reason: inheritedReason };
 
   try {
-    const client = new PrismaClient();
+    const client = createTestClient();
     void client.$disconnect();
     return { available: true };
   } catch (error) {
@@ -46,9 +49,7 @@ export function isE2eAvailable(): E2eAvailability {
 export async function prepareE2eRun(): Promise<void> {
   const availability = isE2eAvailable();
   if (!availability.available) {
-    process.env.E2E_UNAVAILABLE_REASON = availability.reason;
-    console.warn(`[e2e skipped] ${availability.reason}`);
-    return;
+    throw new Error(`E2E prerequisites unavailable: ${availability.reason}`);
   }
 
   const postgres = await EmbeddedPostgres.start();
@@ -56,12 +57,10 @@ export async function prepareE2eRun(): Promise<void> {
   configureTestEnvironment(postgres.url);
 
   try {
-    await runPrisma(["db", "push", "--skip-generate", "--accept-data-loss"]);
-    // Prisma cannot represent CHECK constraints in schema.prisma. db push
-    // creates all models/FKs/enums; this companion SQL installs the database-
-    // only financial and inventory invariants that these tests are meant to
-    // exercise.
-    await runPrisma(["db", "execute", "--file", "prisma/integrity.sql"]);
+    // Do not ask Prisma to download a query engine in the test environment.
+    // The checked-in migration and integrity SQL are the source of truth.
+    await applySqlFile(resolve(backendRoot, "prisma/migrations/20260825102223/migration.sql"), postgres.url);
+    await applySqlFile(resolve(backendRoot, "prisma/integrity.sql"), postgres.url);
     await runPrisma(["db", "seed"]);
   } catch (error) {
     await postgres.stop();
@@ -167,6 +166,21 @@ function configureTestEnvironment(databaseUrl: string): void {
     OTP_FIXED_CODE: "246810",
     OTP_RESEND_COOLDOWN_SECONDS: "1",
   });
+}
+
+function createTestClient(): PrismaClient {
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL is required");
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
+}
+
+async function applySqlFile(file: string, connectionString: string): Promise<void> {
+  const pool = new Pool({ connectionString });
+  try {
+    await pool.query(await readFile(file, "utf8"));
+  } finally {
+    await pool.end();
+  }
 }
 
 function runPrisma(args: string[]): Promise<void> {

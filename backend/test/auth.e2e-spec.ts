@@ -1,11 +1,8 @@
 import request from "supertest";
 import { randomUUID } from "node:crypto";
-import { E2eHarness, isE2eAvailable } from "./harness";
+import { E2eHarness } from "./harness";
 
-const availability = isE2eAvailable();
-if (!availability.available)
-  console.warn(`[auth e2e skipped] ${availability.reason}`);
-const describeE2e = availability.available ? describe : describe.skip;
+const describeE2e = describe;
 
 describeE2e("authentication boundaries (real PostgreSQL)", () => {
   let harness: E2eHarness;
