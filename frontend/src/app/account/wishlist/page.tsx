@@ -1,4 +1,6 @@
-import { RoutePlaceholder } from "@/components/shared/route-placeholder";
+import { redirect } from "next/navigation";
+
+/** Canonical wishlist lives at /wishlist — this alias keeps account links tidy. */
 export default function AccountWishlistPage() {
-  return <RoutePlaceholder title="علاقه‌مندی‌ها" />;
+  redirect("/wishlist");
 }
