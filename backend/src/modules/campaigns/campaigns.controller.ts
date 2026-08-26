@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { Permissions, Public, CurrentUser, type AuthenticatedUser } from '../../common/decorators/auth.decorators';
 import { PaginationDto, paginated } from '../../common/dto/pagination.dto';
 import { AppError } from '../../common/errors/app-error';

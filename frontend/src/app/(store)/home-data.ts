@@ -25,7 +25,8 @@ export interface HomeData {
 async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try {
     return await fn();
-  } catch {
+  } catch (err) {
+    console.error("[home-data] section fetch failed:", (err as Error)?.message);
     return fallback;
   }
 }

@@ -251,7 +251,8 @@ export class PaymentService {
       if (claimed.count === 0) return false;
 
       const attempt = await tx.paymentAttempt.findUniqueOrThrow({ where: { id: attemptId } });
-      const payment = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
+      // Guard: throws if the payment no longer exists.
+      await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
 
       await tx.paymentTransaction.create({
         data: {

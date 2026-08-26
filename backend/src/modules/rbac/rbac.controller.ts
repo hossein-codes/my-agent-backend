@@ -1,8 +1,7 @@
-import { Body, Controller, Get, Param, Post, Delete, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Delete } from '@nestjs/common';
 import { ApiBearerAuth, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { Permissions, CurrentUser, type AuthenticatedUser } from '../../common/decorators/auth.decorators';
-import { PaginationDto, paginated } from '../../common/dto/pagination.dto';
 import { AppError } from '../../common/errors/app-error';
 import { ErrorCodes } from '../../common/errors/error-codes';
 import { PrismaService } from '../../shared/prisma/prisma.service';

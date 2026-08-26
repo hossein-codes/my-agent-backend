@@ -1,4 +1,4 @@
-import { publicConfig } from "@/lib/config/env";
+import { publicConfig, serverConfig } from "@/lib/config/env";
 import { ApiError } from "./errors";
 import type {
   ApiErrorBody,
@@ -49,7 +49,14 @@ interface BuildInput {
 }
 
 function buildUrl(path: string, query?: ApiRequestOptions["query"]): string {
-  const base = publicConfig.apiUrl.replace(/\/$/, "");
+  // Server-side (SSR/RSC) fetches prefer API_BASE_URL, which may point at an
+  // internal address the browser could never reach (e.g. 127.0.0.1 in dev
+  // sandboxes or a private service in production). The browser always uses
+  // the public URL.
+  const base = (typeof window === "undefined"
+    ? serverConfig.apiUrl
+    : publicConfig.apiUrl
+  ).replace(/\/$/, "");
   const normalized = path.startsWith("/") ? path : `/${path}`;
   const url = new URL(`${base}${normalized}`);
   if (query) {
