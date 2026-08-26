@@ -34,7 +34,7 @@ interface DialogContentProps
    * and spans the full width. `center` renders a centered modal. Default:
    * `center` on ≥ sm, `sheet` on mobile.
    */
-  display?: "center" | "sheet";
+  display?: "center" | "sheet" | "fullscreen";
   showClose?: boolean;
 }
 
@@ -50,7 +50,12 @@ const DialogContent = React.forwardRef<
         "fixed z-50 flex flex-col border bg-background shadow-lg outline-none",
         "focus:outline-none",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
-        display === "sheet"
+        display === "fullscreen"
+          ? [
+              "inset-0 h-dvh w-screen max-w-none rounded-none border-none",
+              "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0",
+            ]
+          : display === "sheet"
           ? [
               "inset-x-0 bottom-0 max-h-[88dvh] rounded-t-2xl pb-safe",
               "data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom",

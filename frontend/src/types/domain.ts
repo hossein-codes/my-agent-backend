@@ -239,15 +239,16 @@ export interface CurrentUser {
 
 export interface CartItem {
   variantId: string;
-  productName?: string;
-  productSlug?: string;
-  image?: string | null;
+  sku?: string;
+  product?: { id: string; name: string; slug: string } | null;
   color?: string | null;
   size?: string | null;
-  sku?: string;
   quantity: number;
   unitPrice: number | null;
   lineTotal: number | null;
+  /** Live stock for the variant (server-authoritative). */
+  available?: number;
+  purchasable?: boolean;
 }
 
 export interface Cart {
@@ -269,11 +270,14 @@ export interface CouponValidation {
 // ---------------------------------------------------------------------------
 
 export interface ShippingOption {
-  id: string;
+  methodId: string;
   name: string;
-  description?: string | null;
+  carrier?: string | null;
   amount: number;
-  estimatedDays?: number | null;
+  /** True when the free-shipping rule zeroed the amount. */
+  freeShippingApplied?: boolean;
+  estimatedDaysMin?: number | null;
+  estimatedDaysMax?: number | null;
   [key: string]: unknown;
 }
 

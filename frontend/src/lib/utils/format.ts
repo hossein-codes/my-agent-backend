@@ -14,6 +14,26 @@ export function toPersianDigits(input: string | number): string {
   return String(input).replace(/\d/g, (d) => PERSIAN_DIGITS[Number(d)] as string);
 }
 
+/** Reference color names (seeded catalog data) → Persian labels. */
+const COLOR_FA: Record<string, string> = {
+  black: "مشکی",
+  white: "سفید",
+  red: "قرمز",
+  navy: "سرمه‌ای",
+  gray: "طوسی",
+  green: "سبز",
+  beige: "بژ",
+  brown: "قهوه‌ای",
+  pink: "صورتی",
+  yellow: "زرد",
+};
+
+/** Persian presentation for a color name; unknown names pass through. */
+export function colorNameFa(name: string | null | undefined): string {
+  if (!name) return "";
+  return COLOR_FA[name.trim().toLowerCase()] ?? name;
+}
+
 /**
  * Group thousands for the default Persian display:
  * 1250000 → "۱٬۲۵۰٬۰۰۰" (Persian digits + Arabic thousands separator U+066C).
