@@ -4,8 +4,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function HeroSkeleton() {
   return (
-    <div className="px-4 pt-4">
-      <Skeleton className="aspect-[16/10] w-full rounded-3xl" />
+    <div className="mx-auto w-[91%] pt-3">
+      <Skeleton className="h-[clamp(200px,56vw,250px)] w-full rounded-3xl" />
+      <div className="mt-3.5 flex items-center justify-center gap-1.5">
+        <Skeleton className="h-[5px] w-5 rounded-full" />
+        <Skeleton className="h-[5px] w-[5px] rounded-full" />
+        <Skeleton className="h-[5px] w-[5px] rounded-full" />
+      </div>
     </div>
   );
 }

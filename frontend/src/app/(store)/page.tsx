@@ -1,4 +1,5 @@
-import { HeroCampaign, type HeroSlide } from "@/components/home/hero-campaign";
+import { PromoHeroSlider } from "@/components/home/promo-hero-slider";
+import { HERO_SLIDES } from "@/config/hero-slides";
 import { CategoryRail } from "@/features/categories/components/category-rail";
 import { PromoHighlights } from "@/components/home/promo-highlights";
 import { ProductRail } from "@/components/shared/product-rail";
@@ -7,7 +8,6 @@ import { TrustStrip } from "@/components/home/trust-strip";
 import { EditorialGrid } from "@/components/home/editorial-grid";
 import { BrandRail } from "@/components/home/brand-rail";
 import {
-  HeroSkeleton,
   CategoryRailSkeleton,
   ProductRailSkeleton,
   PromoGridSkeleton,
@@ -19,34 +19,16 @@ import { Suspense } from "react";
 // failures are caught in getHomeData so the page never fully collapses.
 export const revalidate = 60;
 
-// Editorial hero imagery is shipped with the app (no external hotlinking).
-const HERO_SLIDES: HeroSlide[] = [
-  {
-    key: "fw-editorial",
-    title: "کالکشن پاییز ۱۴۰۵",
-    subtitle: "تازه رسیده",
-    ctaLabel: "مشاهده کالکشن",
-    href: "/campaigns/fw-collection",
-    image: "/hero/editorial-dark.jpg",
-  },
-  {
-    key: "night-edit",
-    title: "استایل شبانه، انتخاب ویژه",
-    subtitle: "ادیتوریال",
-    ctaLabel: "خرید کنید",
-    href: "/categories/evening",
-    image: "/hero/editorial-night.jpg",
-  },
-];
-
 export default async function HomePage() {
   const data = getHomeData();
 
   return (
     <main className="flex flex-col gap-7 pb-4 pt-1">
-      <Suspense fallback={<HeroSkeleton />}>
-        <HeroSection data={data} />
-      </Suspense>
+      {/* Hero artwork ships with the app and needs no fetch — first paint
+          renders it immediately (no Suspense, no layout shift). */}
+      <div className="pt-3">
+        <PromoHeroSlider slides={HERO_SLIDES} autoplay intervalMs={5000} />
+      </div>
 
       <TrustStrip />
 
@@ -81,15 +63,6 @@ export default async function HomePage() {
 
 // Section components resolve the shared data promise independently so React can
 // stream them as each part of getHomeData resolves.
-
-async function HeroSection({
-  data,
-}: {
-  data: ReturnType<typeof getHomeData>;
-}) {
-  const resolved = await data;
-  return <HeroCampaign slides={HERO_SLIDES} campaigns={resolved.campaigns} />;
-}
 
 async function CategorySection({
   data,
