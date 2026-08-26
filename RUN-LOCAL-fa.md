@@ -22,6 +22,7 @@ code .
 ```powershell
 cd backend
 npm install
+npx prisma generate     # ← مهم: ساخت Prisma Client (بدون این، ۱۰۰+ خطای tsc می‌گیری!)
 npm run env:setup
 ```
 
