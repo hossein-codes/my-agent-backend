@@ -2,30 +2,37 @@ import {
   MOCK_BRANDS,
   MOCK_CAMPAIGNS,
   MOCK_CATEGORIES,
+  MOCK_COLLECTIONS,
+  MOCK_FACETS,
   getProduct,
   listProducts,
+  suggest,
 } from "./data";
 import type {
   ActiveCampaign,
   Brand,
   Category,
+  Collection,
+  Facets,
   ProductDetail,
   ProductListResponse,
+  SearchSuggestions,
 } from "@/types/domain";
 
 /**
- * DEV-ONLY in-memory backend for local UI work.
+ * Demo mode — the storefront runs entirely on local sample data, no backend.
  *
- * Returns data shaped exactly like the real backend. The mock flag
- * (NEXT_PUBLIC_API_MOCKING) is read at the server boundary so feature APIs
- * fall back to these values when no backend is running. Because `MOCKING` is a
- * compile-time constant (false in production), the data import is tree-shaken
- * out of production bundles. This module is intentionally safe to import from
- * Client Components (it does not use `server-only`).
+ * Opt-in via `NEXT_PUBLIC_API_MOCKING=enabled`, so an ordinary build is
+ * untouched. It deliberately no longer requires `NODE_ENV === "development"`:
+ * publishing the frontend as a standalone showcase is a legitimate use, and
+ * gating the data on dev builds made that impossible (a production build
+ * rendered an empty storefront).
+ *
+ * The flag is a compile-time constant, so with it off the bundler can drop the
+ * data import entirely. This module is safe to import from Client Components
+ * (it does not use `server-only`).
  */
-const MOCKING =
-  process.env.NODE_ENV === "development" &&
-  process.env.NEXT_PUBLIC_API_MOCKING === "enabled";
+const MOCKING = process.env.NEXT_PUBLIC_API_MOCKING === "enabled";
 
 export const isMocking = MOCKING;
 
@@ -36,6 +43,11 @@ interface MockListArgs {
   onSale?: boolean;
   featured?: boolean;
   category?: string;
+  search?: string;
+  brands?: string[];
+  colors?: string[];
+  sizes?: string[];
+  inStock?: boolean;
 }
 
 export const mockApi = {
@@ -66,5 +78,20 @@ export const mockApi = {
   brands(): Brand[] | null {
     if (!MOCKING) return null;
     return MOCK_BRANDS;
+  },
+
+  collections(): Collection[] | null {
+    if (!MOCKING) return null;
+    return MOCK_COLLECTIONS;
+  },
+
+  facets(): Facets | null {
+    if (!MOCKING) return null;
+    return MOCK_FACETS;
+  },
+
+  suggest(term: string): SearchSuggestions | null {
+    if (!MOCKING) return null;
+    return suggest(term);
   },
 };

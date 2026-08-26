@@ -1,10 +1,5 @@
 import { apiClient } from "@/lib/api";
-import type {
-  Brand,
-  Category,
-  Collection,
-  Facets,
-} from "@/types/domain";
+import type { Brand, Category, Collection, Facets } from "@/types/domain";
 import { mockApi } from "@/mocks/server-data";
 
 export const categoriesApi = {
@@ -18,10 +13,18 @@ export const categoriesApi = {
   brands() {
     return apiClient.get<Brand[]>("/catalog/brands");
   },
-  collections() {
+  async collections(): Promise<Collection[]> {
+    if (mockApi.isEnabled()) {
+      const mocked = mockApi.collections();
+      if (mocked) return mocked;
+    }
     return apiClient.get<Collection[]>("/catalog/collections");
   },
-  facets() {
+  async facets(): Promise<Facets> {
+    if (mockApi.isEnabled()) {
+      const mocked = mockApi.facets();
+      if (mocked) return mocked;
+    }
     return apiClient.get<Facets>("/catalog/facets");
   },
 };

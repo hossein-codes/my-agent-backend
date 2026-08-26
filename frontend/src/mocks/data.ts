@@ -11,9 +11,15 @@ import type {
   ActiveCampaign,
   Brand,
   Category,
+  Collection,
+  FacetColor,
+  Facets,
+  FacetSize,
   ProductDetail,
   ProductListItem,
   ProductListResponse,
+  SearchSuggestion,
+  SearchSuggestions,
 } from "@/types/domain";
 
 export interface MockProduct extends ProductListItem {
@@ -148,21 +154,55 @@ export const MOCK_CATEGORIES: Category[] = [
 
 const brand = (name: string, slug: string) => ({ name, slug });
 
-function makeVariants(): ProductDetail["variants"] {
-  return [
-    {
-      id: "v-1",
-      sku: "SKU-BLK-M",
-      colorId: "col-black",
-      color: "مشکی",
-      colorHex: "#0b0b10",
-      sizeId: "sz-m",
-      size: "M",
-      price: { base: 0, sale: 0, unit: 0, discountPercent: 0, onSale: false },
-      available: 8,
-      purchasable: true,
-    },
-  ];
+/**
+ * Small palette so the colour/size filters have something real to filter on.
+ * Variants are derived from it deterministically (see `makeVariants`).
+ */
+const COLOR_PALETTE = [
+  { id: "col-black", name: "مشکی", hex: "#0b0b10" },
+  { id: "col-navy", name: "سرمه‌ای", hex: "#1b2a4a" },
+  { id: "col-cream", name: "کرم", hex: "#e8ddc9" },
+  { id: "col-olive", name: "زیتونی", hex: "#6b7043" },
+];
+
+const SIZE_SET = ["S", "M", "L", "XL"];
+
+/**
+ * Three colours x two sizes per product, picked by the product's index so every
+ * product differs but the data is stable between renders. Stock varies too, so
+ * the "only in stock" filter has something to do.
+ */
+function makeVariants(seed = 0): ProductDetail["variants"] {
+  const variants: ProductDetail["variants"] = [];
+  for (let c = 0; c < 3; c++) {
+    const {
+      id: colorId,
+      name: colorName,
+      hex: colorHex,
+    } = COLOR_PALETTE[(seed + c) % COLOR_PALETTE.length] ?? {
+      id: "col-black",
+      name: "مشکی",
+      hex: "#0b0b10",
+    };
+    for (let sz = 0; sz < 2; sz++) {
+      const size = SIZE_SET[(seed + c + sz) % SIZE_SET.length] ?? "M";
+      const available =
+        (seed + c * 2 + sz) % 4 === 0 ? 0 : 3 + ((seed + c + sz) % 6);
+      variants.push({
+        id: `v-${seed}-${c}-${sz}`,
+        sku: `SKU-${seed}${c}${sz}`,
+        colorId,
+        color: colorName,
+        colorHex,
+        sizeId: `sz-${size.toLowerCase()}`,
+        size,
+        price: { base: 0, sale: 0, unit: 0, discountPercent: 0, onSale: false },
+        available,
+        purchasable: available > 0,
+      });
+    }
+  }
+  return variants;
 }
 
 export const MOCK_PRODUCTS: MockProduct[] = [
@@ -181,7 +221,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     inStock: true,
     isFeatured: true,
     description: "تی‌شرتی با برش مینیمال از نخ پنبهٔ صد در صد.",
-    variants: makeVariants(),
+    variants: makeVariants(0),
     options: { colors: [], sizes: [] },
     attributes: [],
   },
@@ -200,7 +240,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     inStock: true,
     isFeatured: true,
     description: "جین راست‌پا با دوام و راحتی روزمره.",
-    variants: makeVariants(),
+    variants: makeVariants(1),
     options: { colors: [], sizes: [] },
     attributes: [],
   },
@@ -219,7 +259,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     inStock: true,
     isFeatured: true,
     description: "بافتی نرم و گرم برای روزهای سرد.",
-    variants: makeVariants(),
+    variants: makeVariants(2),
     options: { colors: [], sizes: [] },
     attributes: [],
   },
@@ -238,7 +278,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     inStock: true,
     isFeatured: true,
     description: "بوت چرم طبیعی با زیرهٔ راحت.",
-    variants: makeVariants(),
+    variants: makeVariants(3),
     options: { colors: [], sizes: [] },
     attributes: [],
   },
@@ -257,7 +297,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     inStock: true,
     isFeatured: false,
     description: "کیف دستی کلاسیک با دوخت دقیق.",
-    variants: makeVariants(),
+    variants: makeVariants(4),
     options: { colors: [], sizes: [] },
     attributes: [],
   },
@@ -276,7 +316,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     inStock: true,
     isFeatured: true,
     description: "ساعت مینیمال با صفحهٔ گرد و بند چرم.",
-    variants: makeVariants(),
+    variants: makeVariants(5),
     options: { colors: [], sizes: [] },
     attributes: [],
   },
@@ -295,7 +335,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     inStock: true,
     isFeatured: false,
     description: "کتانی سبک برای استفادهٔ روزانه.",
-    variants: makeVariants(),
+    variants: makeVariants(6),
     options: { colors: [], sizes: [] },
     attributes: [],
   },
@@ -314,7 +354,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     inStock: true,
     isFeatured: false,
     description: "بلیزر ساختاریافته برای استایل رسمی.",
-    variants: makeVariants(),
+    variants: makeVariants(7),
     options: { colors: [], sizes: [] },
     attributes: [],
   },
@@ -333,7 +373,7 @@ export const MOCK_PRODUCTS: MockProduct[] = [
     inStock: true,
     isFeatured: false,
     description: "لباس شب با برش ظریف و پارچهٔ لوکس.",
-    variants: makeVariants(),
+    variants: makeVariants(8),
     options: { colors: [], sizes: [] },
     attributes: [],
   },
@@ -391,6 +431,96 @@ export const MOCK_BRANDS: Brand[] = (() => {
   }));
 })();
 
+/**
+ * Facets for the filter sheet, derived from the variants above so labels can
+ * never drift from the products they filter.
+ */
+export const MOCK_FACETS: Facets = (() => {
+  const colors = new Map<string, FacetColor>();
+  const sizes = new Map<string, FacetSize>();
+  for (const product of MOCK_PRODUCTS) {
+    for (const variant of product.variants) {
+      if (variant.colorId && variant.color && !colors.has(variant.colorId)) {
+        colors.set(variant.colorId, {
+          id: variant.colorId,
+          name: variant.color,
+          displayName: variant.color,
+          slug: variant.colorId.replace(/^col-/, ""),
+          hexCode: variant.colorHex ?? "#000000",
+        });
+      }
+      if (variant.sizeId && variant.size && !sizes.has(variant.sizeId)) {
+        sizes.set(variant.sizeId, {
+          id: variant.sizeId,
+          label: variant.size,
+          type: "APPAREL",
+          slug: variant.sizeId.replace(/^sz-/, ""),
+        });
+      }
+    }
+  }
+  return {
+    colors: [...colors.values()],
+    sizes: [...sizes.values()],
+    attributes: [],
+  };
+})();
+
+export const MOCK_COLLECTIONS: Collection[] = [
+  {
+    id: "cll-fw",
+    name: "کالکشن پاییز",
+    slug: "fw-collection",
+    description: "تازه‌های فصل",
+    imageUrl: null,
+  },
+  {
+    id: "cll-essentials",
+    name: "ضروریات کمد",
+    slug: "essentials",
+    description: "پایه‌های همیشگی",
+    imageUrl: null,
+  },
+  {
+    id: "cll-evening",
+    name: "مجلسی شب",
+    slug: "evening",
+    description: "برای مناسبت‌ها",
+    imageUrl: null,
+  },
+];
+
+/** Search suggestions across products and categories, like `/catalog/search/suggest`. */
+export function suggest(term: string): SearchSuggestions {
+  const q = term.trim().toLowerCase();
+  if (!q) return { items: [] };
+  const items: SearchSuggestion[] = [];
+  for (const product of MOCK_PRODUCTS) {
+    if (
+      product.name.toLowerCase().includes(q) ||
+      product.description.toLowerCase().includes(q)
+    ) {
+      items.push({
+        type: "PRODUCT",
+        label: product.name,
+        href: `/products/${product.slug}`,
+      });
+    }
+  }
+  for (const category of MOCK_CATEGORIES) {
+    for (const node of [category, ...(category.children ?? [])]) {
+      if (node.name.toLowerCase().includes(q)) {
+        items.push({
+          type: "CATEGORY",
+          label: node.name,
+          href: `/categories/${node.slug}`,
+        });
+      }
+    }
+  }
+  return { items: items.slice(0, 8) };
+}
+
 export function listProducts(opts: {
   page?: number;
   pageSize?: number;
@@ -398,12 +528,39 @@ export function listProducts(opts: {
   onSale?: boolean;
   featured?: boolean;
   category?: string;
+  search?: string;
+  brands?: string[];
+  colors?: string[];
+  sizes?: string[];
+  inStock?: boolean;
 }): ProductListResponse {
   let items = [...MOCK_PRODUCTS];
   if (opts.onSale) items = items.filter((p) => p.onSale);
   if (opts.featured) items = items.filter((p) => p.isFeatured);
+  if (opts.inStock) items = items.filter((p) => p.inStock);
   if (opts.category)
     items = items.filter((p) => p.category?.slug === opts.category);
+  if (opts.brands?.length)
+    items = items.filter((p) => p.brand && opts.brands!.includes(p.brand.slug));
+  if (opts.colors?.length)
+    items = items.filter((p) =>
+      p.variants.some((v) => v.color && opts.colors!.includes(v.color)),
+    );
+  if (opts.sizes?.length)
+    items = items.filter((p) =>
+      // Sizes are matched by LABEL, exactly like the real API.
+      p.variants.some((v) => v.size && opts.sizes!.includes(v.size)),
+    );
+  if (opts.search) {
+    const q = opts.search.trim().toLowerCase();
+    if (q)
+      items = items.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.description.toLowerCase().includes(q) ||
+          (p.brand?.name.toLowerCase().includes(q) ?? false),
+      );
+  }
 
   switch (opts.sort) {
     case "price_asc":

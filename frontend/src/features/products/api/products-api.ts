@@ -1,10 +1,7 @@
 import { apiClient } from "@/lib/api";
 import { DEFAULT_PAGE_SIZE } from "@/constants";
 import type { SortKey } from "@/types/domain";
-import type {
-  ProductDetail,
-  ProductListResponse,
-} from "@/types/domain";
+import type { ProductDetail, ProductListResponse } from "@/types/domain";
 import { mockApi } from "@/mocks/server-data";
 
 export interface ProductListParams {
@@ -63,6 +60,11 @@ export const productsApi = {
         onSale: params.onSale,
         featured: params.featured,
         category: params.category,
+        search: params.search,
+        brands: params.brands,
+        colors: params.colors,
+        sizes: params.sizes,
+        inStock: params.inStock,
       });
       if (mocked) return mocked;
     }
