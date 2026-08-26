@@ -1,5 +1,7 @@
 import { StoreHeader } from "@/components/layout/store-header";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { AnnouncementBar } from "@/components/layout/announcement-bar";
+import { SiteFooter } from "@/components/layout/site-footer";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 /**
@@ -16,8 +18,10 @@ export default function StoreLayout({
   return (
     <TooltipProvider delayDuration={200}>
       <div className="relative flex min-h-dvh flex-col">
+        <AnnouncementBar />
         <StoreHeader />
         <main className="flex-1 pb-28 pt-1 sm:pb-8">{children}</main>
+        <SiteFooter />
         <MobileNav />
       </div>
     </TooltipProvider>

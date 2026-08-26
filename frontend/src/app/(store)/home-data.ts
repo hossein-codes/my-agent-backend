@@ -2,8 +2,10 @@ import "server-only";
 import { productsApi } from "@/features/products";
 import { categoriesApi } from "@/features/categories";
 import { campaignsApi } from "@/features/campaigns";
+import { brandsApi } from "@/features/brands";
 import type {
   ActiveCampaign,
+  Brand,
   Category,
   ProductListItem,
 } from "@/types/domain";
@@ -20,6 +22,7 @@ export interface HomeData {
   onSale: ProductListItem[];
   newest: ProductListItem[];
   campaigns: ActiveCampaign[];
+  brands: Brand[];
 }
 
 async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
@@ -32,7 +35,7 @@ async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
 }
 
 export async function getHomeData(): Promise<HomeData> {
-  const [categories, featuredRes, onSaleRes, newestRes, campaigns] =
+  const [categories, featuredRes, onSaleRes, newestRes, campaigns, brands] =
     await Promise.all([
       safe(() => categoriesApi.tree(), [] as Category[]),
       safe(
@@ -53,6 +56,7 @@ export async function getHomeData(): Promise<HomeData> {
         { items: [] as ProductListItem[], total: 0, page: 1, pageSize: 10 },
       ),
       safe(() => campaignsApi.active(), [] as ActiveCampaign[]),
+      safe(() => brandsApi.list(), [] as Brand[]),
     ]);
 
   return {
@@ -61,5 +65,6 @@ export async function getHomeData(): Promise<HomeData> {
     onSale: onSaleRes.items,
     newest: newestRes.items,
     campaigns,
+    brands,
   };
 }

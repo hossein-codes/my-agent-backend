@@ -3,6 +3,9 @@ import { CategoryRail } from "@/features/categories/components/category-rail";
 import { PromoHighlights } from "@/components/home/promo-highlights";
 import { ProductRail } from "@/components/shared/product-rail";
 import { FlashSaleSection } from "@/components/home/flash-sale-section";
+import { TrustStrip } from "@/components/home/trust-strip";
+import { EditorialGrid } from "@/components/home/editorial-grid";
+import { BrandRail } from "@/components/home/brand-rail";
 import {
   HeroSkeleton,
   CategoryRailSkeleton,
@@ -45,6 +48,8 @@ export default async function HomePage() {
         <HeroSection data={data} />
       </Suspense>
 
+      <TrustStrip />
+
       <Suspense fallback={<CategoryRailSkeleton />}>
         <CategorySection data={data} />
       </Suspense>
@@ -61,8 +66,14 @@ export default async function HomePage() {
         <FlashSection data={data} />
       </Suspense>
 
+      <EditorialGrid />
+
       <Suspense fallback={<ProductRailSkeleton />}>
         <NewArrivalsSection data={data} />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <BrandSection data={data} />
       </Suspense>
     </main>
   );
@@ -141,4 +152,13 @@ async function NewArrivalsSection({
       products={resolved.newest}
     />
   );
+}
+
+async function BrandSection({
+  data,
+}: {
+  data: ReturnType<typeof getHomeData>;
+}) {
+  const resolved = await data;
+  return <BrandRail brands={resolved.brands} />;
 }

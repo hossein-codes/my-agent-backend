@@ -131,19 +131,27 @@ async function main() {
   }
 
   const roles = await client.query('SELECT COUNT(*)::int AS n FROM "Role"');
+  const products = await client.query('SELECT COUNT(*)::int AS n FROM "Product"');
   await client.end();
+  const seedEnv = {
+    ...process.env,
+    NODE_OPTIONS: `--require ${path.join(__dirname, 'prisma-wasm-patch.cjs')}`,
+  };
   if (roles.rows[0].n === 0) {
     console.log('[pgboot] seeding via prisma/seed.ts…');
     execFileSync('npx', ['ts-node', '--transpile-only', 'prisma/seed.ts'], {
-      cwd: BACKEND,
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        NODE_OPTIONS: `--require ${path.join(__dirname, 'prisma-wasm-patch.cjs')}`,
-      },
+      cwd: BACKEND, stdio: 'inherit', env: seedEnv,
     });
   } else {
     console.log(`[pgboot] already seeded (${roles.rows[0].n} roles)`);
+  }
+  if (products.rows[0].n < 10) {
+    console.log('[pgboot] seeding demo catalog via prisma/seed-demo.ts…');
+    execFileSync('npx', ['ts-node', '--transpile-only', 'prisma/seed-demo.ts'], {
+      cwd: BACKEND, stdio: 'inherit', env: seedEnv,
+    });
+  } else {
+    console.log(`[pgboot] demo catalog present (${products.rows[0].n} products)`);
   }
 
   console.log('[pgboot] DATABASE_URL=' + URL);

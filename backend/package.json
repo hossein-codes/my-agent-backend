@@ -28,6 +28,7 @@
     "infra:setup:win": "powershell -ExecutionPolicy Bypass -File scripts/devbox.ps1",
     "db:migrate": "prisma migrate deploy",
     "seed": "prisma db seed",
+    "seed:demo": "ts-node prisma/seed-demo.ts",
     "env:setup": "node scripts/setup-env.mjs",
     "db:check": "node scripts/check-db.mjs",
     "admin:grant": "node scripts/grant-admin.mjs",
