@@ -2,6 +2,7 @@
 
 import { ShoppingBag } from "lucide-react";
 import { useCart } from "@/features/cart";
+import { useAuth } from "@/features/auth";
 import { HeaderIconButton, CountBadge } from "./header-icon-button";
 import { SearchEntry } from "./search-entry";
 
@@ -15,7 +16,9 @@ import { SearchEntry } from "./search-entry";
  * and this header together as one block.
  */
 export function StoreHeader() {
-  const { data: cart } = useCart();
+  const { isAuthenticated } = useAuth();
+  // Server cart requires auth — a logged-out fetch is a guaranteed 401.
+  const { data: cart } = useCart(isAuthenticated);
   const cartCount =
     cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
 

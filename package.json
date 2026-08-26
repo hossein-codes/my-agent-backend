@@ -1,6 +1,19 @@
 {
+  "name": "my-agent-backend",
+  "private": true,
+  "description": "LUMINA storefront — one-command local dev (backend :3000 + frontend :3001)",
+  "scripts": {
+    "setup": "npm install --prefix backend && npm install --prefix frontend && npm --prefix backend run prisma:generate && npm --prefix backend run env:setup",
+    "dev": "concurrently -n API,WEB -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm --prefix backend run start:dev",
+    "dev:web": "npm --prefix frontend run dev -- -p 3001",
+    "db:migrate": "npm --prefix backend run db:migrate",
+    "seed": "npm --prefix backend run seed && npm --prefix backend run seed:demo",
+    "db:check": "npm --prefix backend run db:check"
+  },
   "devDependencies": {
     "@types/supertest": "^7.2.1",
+    "concurrently": "^9.1.2",
     "supertest": "^7.2.2"
   }
 }

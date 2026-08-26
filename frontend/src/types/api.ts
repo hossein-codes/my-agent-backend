@@ -20,6 +20,7 @@ export const ErrorCodes = {
   // client-side only (never sent by the backend)
   NETWORK_ERROR: "common.network_error",
   ABORTED: "common.aborted",
+  TIMEOUT: "common.timeout",
 
   // auth & sessions
   SESSION_EXPIRED: "auth.session_expired",

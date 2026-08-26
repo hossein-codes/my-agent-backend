@@ -16,7 +16,10 @@ const publicSchema = z.object({
   NEXT_PUBLIC_API_URL: z
     .string()
     .url("NEXT_PUBLIC_API_URL must be a valid URL including /api/v1")
-    .default("http://localhost:3000/api/v1"),
+    // 127.0.0.1 (not localhost): on Windows `localhost` can resolve to IPv6
+    // ::1 first while the dev backend binds IPv4 — a confusing
+    // connection-refused when this default kicks in.
+    .default("http://127.0.0.1:3000/api/v1"),
   NEXT_PUBLIC_APP_NAME: z.string().min(1).default("فروشگاه"),
   NEXT_PUBLIC_DEFAULT_LOCALE: z.string().min(2).default("fa-IR"),
 });

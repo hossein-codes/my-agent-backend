@@ -19,6 +19,7 @@ export function EditorialGrid() {
             src="/hero/editorial-night.jpg"
             alt="کالکشن زنانه"
             fill
+            loading="eager"
             sizes="(max-width: 640px) 100vw, 50vw"
             className="object-cover transition-transform duration-500 group-active:scale-[1.03]"
           />
@@ -42,6 +43,7 @@ export function EditorialGrid() {
             src="/hero/editorial-dark.jpg"
             alt="کالکشن مردانه"
             fill
+            loading="eager"
             sizes="(max-width: 640px) 100vw, 50vw"
             className="object-cover transition-transform duration-500 group-active:scale-[1.03]"
           />

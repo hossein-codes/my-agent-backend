@@ -26,6 +26,67 @@ import type {
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 
+/**
+ * Turn a thrown fetch error into a short, human-readable failure with a
+ * matching code — so the UI can distinguish "backend is not running" from
+ * "slow backend" from a real connectivity problem. Never leaks headers.
+ */
+function classifyNetworkFailure(err: unknown): {
+  code: "common.network_error" | "common.timeout";
+  message: string;
+  detail: string;
+} {
+  const cause = (err as { cause?: { code?: string; message?: string } })?.cause;
+  const causeCode = cause?.code ?? "";
+  const detail = `${(err as Error)?.name ?? "Error"}${causeCode ? ` (${causeCode})` : ""}`;
+
+  if (causeCode === "ECONNREFUSED" || causeCode === "ECONNRESET") {
+    return {
+      code: "common.network_error",
+      message: "سرویس در دسترس نیست. لطفاً از اجرا بودن بک‌اند مطمئن شوید.",
+      detail,
+    };
+  }
+  if (
+    causeCode === "ETIMEDOUT" ||
+    causeCode === "UND_ERR_CONNECT_TIMEOUT" ||
+    causeCode === "EAI_AGAIN"
+  ) {
+    return {
+      code: "common.timeout",
+      message: "پاسخ سرور بیش از حد انتظار طول کشید. دوباره تلاش کنید.",
+      detail,
+    };
+  }
+  return {
+    code: "common.network_error",
+    message: "ارتباط با سرور برقرار نشد. اتصال اینترنت خود را بررسی کنید.",
+    detail,
+  };
+}
+
+/** Compact, safe-to-log description of any thrown error (no headers/tokens). */
+export function describeError(err: unknown): string {
+  if (err instanceof ApiError) {
+    return `ApiError ${err.status} ${err.code}: ${err.message}`;
+  }
+  const e = err as { name?: string; message?: string; cause?: { code?: string } };
+  return `${e?.name ?? "Error"}: ${e?.message ?? "unknown"}${
+    e?.cause?.code ? ` (cause ${e.cause.code})` : ""
+  }`;
+}
+
+let loggedBaseUrls = false;
+function logEffectiveBaseUrlsOnce(): void {
+  // Server-side only, once per process — makes env misconfig instantly
+  // visible in the dev log without printing any secrets.
+  if (loggedBaseUrls || typeof window !== "undefined") return;
+  loggedBaseUrls = true;
+  console.log(
+    `[api] server base=${serverConfig.apiUrl} · browser base=${publicConfig.apiUrl}`,
+  );
+}
+
 type AccessTokenGetter = () => string | null | undefined;
 type UnauthorizedHandler = () => void;
 
@@ -92,6 +153,7 @@ async function parseErrorBody(res: Response): Promise<ApiErrorBody | null> {
 async function request<T>(input: BuildInput): Promise<T> {
   const { method, path, body, options } = input;
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  logEffectiveBaseUrlsOnce();
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -118,8 +180,9 @@ async function request<T>(input: BuildInput): Promise<T> {
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let res: Response;
+  const url = buildUrl(path, options?.query);
   try {
-    res = await fetch(buildUrl(path, options?.query), {
+    res = await fetch(url, {
       method,
       headers,
       credentials: "include", // sends the refresh cookie to /auth/refresh
@@ -129,17 +192,38 @@ async function request<T>(input: BuildInput): Promise<T> {
     });
   } catch (err) {
     clearTimeout(timeoutId);
+
+    // Our own timer fired (the caller's signal is still alive) → timeout,
+    // not a caller-side abort.
     if (err instanceof DOMException && err.name === "AbortError") {
+      if (externalSignal?.aborted) {
+        throw new ApiError({
+          code: "common.aborted",
+          message: "Request aborted",
+          status: 0,
+        });
+      }
+      if (typeof window === "undefined") {
+        console.warn(`[api] TIMEOUT ${method} ${url} after ${timeoutMs}ms`);
+      }
       throw new ApiError({
-        code: "common.aborted",
-        message: "Request aborted",
+        code: "common.timeout",
+        message: "پاسخ سرور بیش از حد انتظار طول کشید. دوباره تلاش کنید.",
         status: 0,
       });
     }
+
+    const failure = classifyNetworkFailure(err);
+    if (typeof window === "undefined") {
+      // Full detail server-side (cause code, URL) — the key for debugging
+      // "backend down vs proxy vs DNS" without exposing any credentials.
+      console.warn(
+        `[api] ${failure.code} ${method} ${url} — ${failure.detail}`,
+      );
+    }
     throw new ApiError({
-      code: "common.network_error",
-      message:
-        "ارتباط با سرور برقرار نشد. اتصال اینترنت خود را بررسی کنید.",
+      code: failure.code,
+      message: failure.message,
       status: 0,
     });
   }

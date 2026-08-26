@@ -62,9 +62,13 @@ export function useCartMutations() {
   return { addItem, updateItem, removeItem, invalidate };
 }
 
-/** Derived cart count for the badge. Reads from the cached server cart. */
-export function useCartCount(): number {
-  const { data } = useCart();
+/**
+ * Derived cart count for the badge. Reads from the cached server cart.
+ * Pass `enabled: isAuthenticated` so logged-out users don't fire a /cart
+ * request that is guaranteed to 401 (the server cart requires auth).
+ */
+export function useCartCount(enabled = true): number {
+  const { data } = useCart(enabled);
   if (!data) return 0;
   return data.items.reduce((sum, item) => sum + item.quantity, 0);
 }

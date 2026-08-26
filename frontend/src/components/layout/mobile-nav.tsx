@@ -27,7 +27,7 @@ type NavItem = {
 export function MobileNav() {
   const pathname = usePathname();
   const { isAuthenticated } = useAuth();
-  const cartCount = useCartCount();
+  const cartCount = useCartCount(isAuthenticated);
 
   const navItems: NavItem[] = [
     { href: "/", label: "خانه", icon: Home },
