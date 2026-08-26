@@ -36,17 +36,24 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:3000/api/v1
 # یا برای پروکسی same-origin:  API_PROXY_TARGET=http://127.0.0.1:3000
 ```
 
-## نقشهٔ صفحات — چی ساخته شده، چی مانده
+## نقشهٔ صفحات — همه ساخته شدند ✅ (۲۰۲۶-۰۸-۲۶، فاز کامل)
 
-| وضعیت | صفحه‌ها |
+| صفحه | وضعیت |
 |---|---|
-| ✅ کامل | `/` (خانه: هیرو، دسته‌ها، ریل محصولات، فلش‌سیل) |
-| ⛔ Placeholder | `(auth)/login` · `(auth)/register` · `(auth)/verify` |
-| ⛔ Placeholder | `products` (لیست+فیلتر) · `products/[slug]` (جزئیات) |
-| ⛔ Placeholder | `categories` · `categories/[slug]` · `search` |
-| ⛔ Placeholder | `campaigns/[slug]` · `wishlist` · `notifications` |
-| ⛔ Placeholder | `cart` · `checkout` · `payment-result` |
-| ⛔ Placeholder | `account` · `account/profile` · `account/orders` · `orders/[id]` · `account/addresses` · `account/wishlist` |
+| `/` خانه (هیرو، اعتماد، دسته‌ها، فروش ویژه، ادیتوریال، برندها، تازه‌ها) | ✅ |
+| `products` لیست + فیلتر (Bottom Sheet چندانتخابی) + مرتب‌سازی + صفحه‌بندی | ✅ |
+| `products/[slug]` گالری تمام‌صفحه، رنگ/سایز، راهنمای سایز، آکاردئون، نظرات + ثبت، مشابه‌ها، CTA چسبان | ✅ |
+| `categories` · `categories/[slug]` · `campaigns/[slug]` | ✅ |
+| `search` (تاریخچه، محبوب‌ها، نتایج) + Sheet سرچ هدر | ✅ |
+| `login`/`register`/`verify` (OTP با شمارش معکوس و ارسال مجدد) | ✅ |
+| `cart` (تعداد، کد تخفیف، نوار ارسال رایگان، خلاصه) | ✅ |
+| `checkout` (آدرس، روش ارسال، پرداخت) + `dev-payment-gateway` + `payment-result` | ✅ |
+| `account` · `profile` · `orders` · `orders/[id]` (تایم‌لاین، پرداخت مجدد، لغو) | ✅ |
+| `addresses` (دفترچه محلی) · `wishlist` · `notifications` | ✅ |
+
+**تست‌های نهایی:** `next build` موفق (۲۴ روت) · tsc صفر خطا · eslint صفر خطا ·
+۲۸/۲۸ تست پاس · هر ۲۲ مسیر ۲۰۰ · حلقه خرید واقعی تا PAID با
+`sandbox/qa-flow.py` تأیید شده (سفارش FA-260826-259499).
 
 **زیرساخت آمادهٔ استفاده:** ۴۵ کامپوننت UI (شادکن/ردیکس)، لایهٔ feature کامل
 (api + hooks + schemas) برای auth/cart/checkout/orders/products/…،
