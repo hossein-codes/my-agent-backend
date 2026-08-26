@@ -32,6 +32,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // The visual viewport shrinking behind the keyboard would leave the fixed
+  // search overlay's input bar stranded under it; resizing the layout keeps
+  // the dvh-based overlay (and its input row) fully visible while typing.
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#0b1020" },

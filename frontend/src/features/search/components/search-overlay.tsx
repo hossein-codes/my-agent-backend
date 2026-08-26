@@ -179,9 +179,12 @@ export function SearchOverlay({ open, onOpenChange }: SearchOverlayProps) {
                       inputRef.current?.focus();
                     }}
                     aria-label="پاک کردن"
-                    className="absolute end-3 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full bg-muted text-muted-foreground active:bg-muted-foreground/20"
+                    className="absolute end-1 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground active:bg-muted"
                   >
-                    <X className="size-3.5" aria-hidden />
+                    {/* Small visual pill inside a 36px hit area. */}
+                    <span className="flex size-6 items-center justify-center rounded-full bg-muted">
+                      <X className="size-3.5" aria-hidden />
+                    </span>
                   </button>
                 ) : null}
               </form>
@@ -312,7 +315,7 @@ function DiscoveryPanel({
               <button
                 type="button"
                 onClick={onClearRecent}
-                className="min-h-9 px-1 text-[11px] text-muted-foreground active:text-foreground"
+                className="min-h-10 px-1 text-[11px] text-muted-foreground active:text-foreground"
               >
                 پاک کردن
               </button>
