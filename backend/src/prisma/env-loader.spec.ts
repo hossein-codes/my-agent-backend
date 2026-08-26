@@ -65,7 +65,8 @@ describe('parseEnvLine', () => {
     expect(parsed.NODE_ENV).toBe('development');
     expect(parsed.PAYMENT_PROVIDER).toBe('mock');
     expect(parsed.MAX_CART_ITEMS).toBe('50');
-    expect(parsed.FRONTEND_BASE_URL).toBe('http://localhost:3000');
+    // The frontend runs on 3001 locally (the API owns 3000) — see RUN-LOCAL-fa.md.
+    expect(parsed.FRONTEND_BASE_URL).toBe('http://localhost:3001');
     // No value may carry a comment fragment.
     for (const [key, value] of Object.entries(parsed)) {
       expect(value).not.toMatch(/\s#\s/);

@@ -40,8 +40,10 @@ RUN mkdir -p /app/uploads && chown -R app:app /app
 USER app
 
 EXPOSE 3000
+# `/health/live` is excluded from the global prefix in app.setup.ts, so it is
+# NOT under /api/v1 (verified: /api/v1/health/live answers 404).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/api/v1/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3000/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # Migrations run as a separate step (`docker run --rm app npx prisma migrate deploy`)
 # before app start, so container start = pure deploy.

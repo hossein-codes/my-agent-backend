@@ -112,6 +112,54 @@ export class AppConfigService {
     if (raw === 'false') return false;
     return this.isProduction;
   }
+  /**
+   * `SameSite` for the refresh cookie.
+   *
+   * `auto` decides from how the deployment is wired: when the frontend is served
+   * from a different host than the API (a split deployment — e.g. the app on
+   * Vercel and this API on its own host), the browser treats every API call as
+   * cross-site and will NOT attach a `Lax` cookie to it. Token refresh would
+   * then silently fail ~15 minutes after login. Such a deployment needs `none`,
+   * which browsers only honour together with `Secure` (i.e. HTTPS).
+   *
+   * Set `AUTH_COOKIE_SAME_SITE` explicitly to `lax` / `strict` / `none` to
+   * override the decision.
+   */
+  get authCookieSameSite(): 'lax' | 'strict' | 'none' {
+    const raw = this.get('AUTH_COOKIE_SAME_SITE', 'auto').trim().toLowerCase();
+    if (raw === 'lax' || raw === 'strict' || raw === 'none') return raw;
+    const sameSite = this.isCrossSiteFrontend ? 'none' : 'lax';
+    if (sameSite === 'none' && !this.authCookieSecure) {
+      // Browsers drop `SameSite=None` cookies that are not `Secure`, which
+      // would look exactly like "login works but the session dies at once".
+      this.warnOnce(
+        'AUTH_COOKIE_SAME_SITE resolved to `none` (the frontend is on a different host than the API) ' +
+          'but AUTH_COOKIE_SECURE is false — browsers will reject the refresh cookie. ' +
+          'Serve the API over HTTPS, or set AUTH_COOKIE_SAME_SITE=lax for a same-site deployment.',
+      );
+    }
+    return sameSite;
+  }
+  /**
+   * True when the frontend is served from a different SITE than the API.
+   *
+   * SameSite is about sites, not origins: `localhost:3001` and `localhost:3000`
+   * are the same site (the port is irrelevant), which is why the standard local
+   * setup keeps working with `lax`. Only a genuinely different host — app on
+   * `*.vercel.app`, API on `*.onrender.com` — needs `none`. Comparing hostnames
+   * rather than registrable domains is deliberate: for two subdomains of one
+   * domain it errs towards `none`, which is still correct (just stricter).
+   */
+  private get isCrossSiteFrontend(): boolean {
+    const frontend = this.frontendBaseUrl;
+    const api = this.publicBaseUrl;
+    if (!frontend || frontend === api) return false;
+    try {
+      return new URL(frontend).hostname !== new URL(api).hostname;
+    } catch {
+      return false;
+    }
+  }
 
   // --- OTP -------------------------------------------------------------------
 
@@ -258,6 +306,14 @@ export class AppConfigService {
     const v = this.env.get<string>(key);
     if (!v) throw new Error(`Missing required environment variable: ${key}`);
     return v;
+  }
+
+  /** Log a configuration warning once per process (getters run per request). */
+  private warned = new Set<string>();
+  private warnOnce(message: string): void {
+    if (this.warned.has(message)) return;
+    this.warned.add(message);
+    this.logger.warn(message);
   }
 
   /** Secrets must be real in production; dev fallbacks are loudly logged. */

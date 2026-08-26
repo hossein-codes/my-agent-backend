@@ -31,7 +31,9 @@ export class AuthController {
       httpOnly: true,
       // AUTH_COOKIE_SECURE=auto resolves to `true` in production.
       secure: this.appConfig.authCookieSecure,
-      sameSite: 'lax',
+      // Resolved per deployment: `lax` same-site, `none` when the frontend is
+      // on another host (otherwise the browser never sends it back).
+      sameSite: this.appConfig.authCookieSameSite,
       // Scoped to the auth prefix so the refresh token is never sent to
       // ordinary API routes — a smaller blast radius if one is ever logged.
       path: `/${this.appConfig.apiPrefix}/auth`,

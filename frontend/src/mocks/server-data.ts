@@ -1,4 +1,5 @@
 import {
+  MOCK_BRANDS,
   MOCK_CAMPAIGNS,
   MOCK_CATEGORIES,
   getProduct,
@@ -6,6 +7,7 @@ import {
 } from "./data";
 import type {
   ActiveCampaign,
+  Brand,
   Category,
   ProductDetail,
   ProductListResponse,
@@ -59,5 +61,10 @@ export const mockApi = {
   campaigns(): ActiveCampaign[] | null {
     if (!MOCKING) return null;
     return MOCK_CAMPAIGNS;
+  },
+
+  brands(): Brand[] | null {
+    if (!MOCKING) return null;
+    return MOCK_BRANDS;
   },
 };

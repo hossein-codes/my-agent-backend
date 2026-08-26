@@ -9,6 +9,7 @@
 
 import type {
   ActiveCampaign,
+  Brand,
   Category,
   ProductDetail,
   ProductListItem,
@@ -34,8 +35,22 @@ export const MOCK_CATEGORIES: Category[] = [
     path: "women",
     productCount: 128,
     children: [
-      { id: "c-tops", name: "بلوز و تی‌شرت", slug: "tops", path: "women.tops", productCount: 42, children: [] },
-      { id: "c-dresses", name: "لباس مجلسی", slug: "dresses", path: "women.dresses", productCount: 24, children: [] },
+      {
+        id: "c-tops",
+        name: "بلوز و تی‌شرت",
+        slug: "tops",
+        path: "women.tops",
+        productCount: 42,
+        children: [],
+      },
+      {
+        id: "c-dresses",
+        name: "لباس مجلسی",
+        slug: "dresses",
+        path: "women.dresses",
+        productCount: 24,
+        children: [],
+      },
     ],
   },
   {
@@ -45,8 +60,22 @@ export const MOCK_CATEGORIES: Category[] = [
     path: "men",
     productCount: 96,
     children: [
-      { id: "c-shirts", name: "پیراهن", slug: "shirts", path: "men.shirts", productCount: 30, children: [] },
-      { id: "c-jeans", name: "جین", slug: "jeans", path: "men.jeans", productCount: 20, children: [] },
+      {
+        id: "c-shirts",
+        name: "پیراهن",
+        slug: "shirts",
+        path: "men.shirts",
+        productCount: 30,
+        children: [],
+      },
+      {
+        id: "c-jeans",
+        name: "جین",
+        slug: "jeans",
+        path: "men.jeans",
+        productCount: 20,
+        children: [],
+      },
     ],
   },
   {
@@ -56,8 +85,22 @@ export const MOCK_CATEGORIES: Category[] = [
     path: "shoes",
     productCount: 64,
     children: [
-      { id: "c-sneakers", name: "کتانی", slug: "sneakers", path: "shoes.sneakers", productCount: 28, children: [] },
-      { id: "c-boots", name: "بوت", slug: "boots", path: "shoes.boots", productCount: 12, children: [] },
+      {
+        id: "c-sneakers",
+        name: "کتانی",
+        slug: "sneakers",
+        path: "shoes.sneakers",
+        productCount: 28,
+        children: [],
+      },
+      {
+        id: "c-boots",
+        name: "بوت",
+        slug: "boots",
+        path: "shoes.boots",
+        productCount: 12,
+        children: [],
+      },
     ],
   },
   {
@@ -75,8 +118,22 @@ export const MOCK_CATEGORIES: Category[] = [
     path: "accessories",
     productCount: 72,
     children: [
-      { id: "c-watches", name: "ساعت", slug: "watches", path: "accessories.watches", productCount: 18, children: [] },
-      { id: "c-fragrance", name: "عطر", slug: "fragrance", path: "accessories.fragrance", productCount: 14, children: [] },
+      {
+        id: "c-watches",
+        name: "ساعت",
+        slug: "watches",
+        path: "accessories.watches",
+        productCount: 18,
+        children: [],
+      },
+      {
+        id: "c-fragrance",
+        name: "عطر",
+        slug: "fragrance",
+        path: "accessories.fragrance",
+        productCount: 14,
+        children: [],
+      },
     ],
   },
   {
@@ -305,6 +362,35 @@ export const MOCK_CAMPAIGNS: ActiveCampaign[] = [
   },
 ];
 
+/**
+ * Brands for `/catalog/brands`, derived from the mock catalog so the brand rail
+ * always matches the products rendered next to it. The full `Brand` shape
+ * (id/logoUrl/productCount) is what the backend returns; list items only carry
+ * `{name, slug}`, which is why this is built separately.
+ */
+export const MOCK_BRANDS: Brand[] = (() => {
+  const bySlug = new Map<
+    string,
+    { name: string; slug: string; count: number }
+  >();
+  for (const product of MOCK_PRODUCTS) {
+    if (!product.brand) continue;
+    const entry = bySlug.get(product.brand.slug) ?? {
+      ...product.brand,
+      count: 0,
+    };
+    entry.count += 1;
+    bySlug.set(product.brand.slug, entry);
+  }
+  return [...bySlug.values()].map((b) => ({
+    id: `br-${b.slug}`,
+    name: b.name,
+    slug: b.slug,
+    logoUrl: null,
+    productCount: b.count,
+  }));
+})();
+
 export function listProducts(opts: {
   page?: number;
   pageSize?: number;
@@ -356,7 +442,9 @@ export function getProduct(slug: string): ProductDetail | null {
     slug: p.slug,
     description: p.description,
     brand: { ...p.brand!, logoUrl: null },
-    categories: p.category ? [p.category as { name: string; slug: string; path: string }] : [],
+    categories: p.category
+      ? [p.category as { name: string; slug: string; path: string }]
+      : [],
     collections: [],
     tags: [],
     media: p.image ? [{ url: p.image, alt: p.imageAlt, type: "IMAGE" }] : [],
