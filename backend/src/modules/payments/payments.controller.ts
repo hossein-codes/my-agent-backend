@@ -11,7 +11,18 @@ import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 import { AppError } from '../../common/errors/app-error';
 import { ErrorCodes } from '../../common/errors/error-codes';
 
-class CallbackQuery { authority?: string; Authority?: string; Status?: string; status?: string; }
+/**
+ * Gateway redirect query. Every field MUST carry a validation decorator:
+ * the global ValidationPipe runs with `whitelist: true`, which strips
+ * undecorated properties — a bare class would silently drop `authority`
+ * and every callback would resolve as "no authority".
+ */
+class CallbackQuery {
+  @IsOptional() @IsString() authority?: string;
+  @IsOptional() @IsString() Authority?: string;
+  @IsOptional() @IsString() Status?: string;
+  @IsOptional() @IsString() status?: string;
+}
 class WebhookDto {
   @IsOptional() @IsString() authority?: string;
   @IsOptional() @IsString() externalId?: string;
