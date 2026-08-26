@@ -6,6 +6,9 @@
 export const CURRENCY = "IRT";
 export const CURRENCY_LABEL = "تومان";
 
+/** Store brand — shown in the search placeholder and other brand moments. */
+export const BRAND_NAME = "LUMINA";
+
 export const DEFAULT_PAGE_SIZE = 20;
 export const MAX_PAGE_SIZE = 100;
 

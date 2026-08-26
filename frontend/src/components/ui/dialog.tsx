@@ -53,7 +53,9 @@ const DialogContent = React.forwardRef<
         display === "fullscreen"
           ? [
               "inset-0 h-dvh w-screen max-w-none rounded-none border-none",
-              "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0",
+              "duration-300",
+              "data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom",
+              "data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom",
             ]
           : display === "sheet"
           ? [

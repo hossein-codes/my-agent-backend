@@ -24,10 +24,8 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/",
 }));
 
-// Mock feature hooks so the header is isolated from auth/cart/wishlist API.
+// Mock feature hooks so the header is isolated from auth/cart API calls.
 const cartCount = vi.fn(() => 0);
-const wishlistTotal = vi.fn(() => 0);
-const isAuthed = vi.fn(() => false);
 
 vi.mock("@/features/cart", () => ({
   useCart: () => ({
@@ -35,14 +33,6 @@ vi.mock("@/features/cart", () => ({
       items: Array.from({ length: cartCount() }, () => ({ quantity: 1 })),
     },
   }),
-}));
-
-vi.mock("@/features/wishlist", () => ({
-  useWishlist: () => ({ data: { total: wishlistTotal() } }),
-}));
-
-vi.mock("@/features/auth", () => ({
-  useAuth: () => ({ isAuthenticated: isAuthed() }),
 }));
 
 function renderHeader() {
@@ -56,21 +46,19 @@ function renderHeader() {
 
 beforeEach(() => {
   cartCount.mockReturnValue(0);
-  wishlistTotal.mockReturnValue(0);
-  isAuthed.mockReturnValue(false);
 });
 
 describe("<StoreHeader />", () => {
-  it("renders the LUMINA logo centered", () => {
+  it("renders the search trigger with the brand placeholder", () => {
     renderHeader();
-    expect(screen.getByLabelText(/LUMINA/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "جستجو" })).toHaveTextContent(
+      "جستجو در LUMINA...",
+    );
   });
 
-  it("renders all header actions with accessible names", () => {
+  it("renders the cart action with an accessible name", () => {
     renderHeader();
-    expect(screen.getByLabelText("اعلان‌ها")).toHaveAttribute("href", "/notifications");
     expect(screen.getByLabelText("سبد خرید")).toHaveAttribute("href", "/cart");
-    expect(screen.getByLabelText("علاقه‌مندی‌ها")).toHaveAttribute("href", "/login");
   });
 
   it("hides cart badge when count is 0", () => {
@@ -90,13 +78,26 @@ describe("<StoreHeader />", () => {
     expect(screen.getByText("۹۹+")).toBeInTheDocument();
   });
 
-  it("shows search entry that opens the search sheet", async () => {
+  it("opens the full-screen search overlay and focuses the input", async () => {
     const user = userEvent.setup();
     renderHeader();
-    const trigger = screen.getByRole("button", { name: "جستجو" });
-    await user.click(trigger);
-    expect(
-      screen.getByPlaceholderText("جستجو در محصولات لومینا..."),
-    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "جستجو" }));
+    const input = (await screen.findByRole("searchbox", {
+      name: "جستجو",
+    })) as HTMLInputElement;
+    expect(input).toHaveFocus();
+  });
+
+  it("clears a typed query from inside the overlay", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+    await user.click(screen.getByRole("button", { name: "جستجو" }));
+    const input = (await screen.findByRole("searchbox", {
+      name: "جستجو",
+    })) as HTMLInputElement;
+    await user.type(input, "کتانی");
+    expect(input.value).toBe("کتانی");
+    await user.click(screen.getByLabelText("پاک کردن"));
+    expect(input.value).toBe("");
   });
 });
